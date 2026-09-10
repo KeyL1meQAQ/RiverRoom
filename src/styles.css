@@ -1608,6 +1608,16 @@ b {
   background: transparent;
   color: #fff;
   padding: 0;
+  flex-shrink: 0;
+}
+.toast.modal-toast {
+  position: static;
+  transform: none;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 16px;
+  justify-content: space-between;
+  box-shadow: none;
 }
 .error-page {
   min-height: 100dvh;

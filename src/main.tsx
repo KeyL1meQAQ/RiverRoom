@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
   ArrowDownToLine,
@@ -106,6 +107,10 @@ function IconButton({
   );
 }
 
+const ToastHostContext = createContext<
+  React.Dispatch<React.SetStateAction<HTMLDialogElement | null>>
+>(() => {});
+
 function Modal({
   title,
   children,
@@ -116,9 +121,15 @@ function Modal({
   close: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const setToastHost = useContext(ToastHostContext);
   useEffect(() => {
-    ref.current?.showModal();
-  }, []);
+    const dialog = ref.current!;
+    dialog.showModal();
+    setToastHost(dialog);
+    return () => {
+      setToastHost((current) => current === dialog ? null : current);
+    };
+  }, [setToastHost]);
   return (
     <dialog
       ref={ref}
@@ -135,6 +146,72 @@ function Modal({
       </div>
       {children}
     </dialog>
+  );
+}
+
+function CopyField({
+  label,
+  value,
+  copyValue = value,
+  buttonLabel = `复制${label}`,
+  notify,
+}: {
+  label: string;
+  value: string;
+  copyValue?: string;
+  buttonLabel?: string;
+  notify: (message: string) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const copy = async () => {
+    const input = ref.current;
+    if (!input) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(copyValue);
+        if (input.isConnected) notify("已复制");
+        return;
+      }
+    } catch {
+      // Permission denial can still allow the user-initiated legacy copy.
+    }
+    if (!input.isConnected) return;
+
+    const previousFocus = document.activeElement;
+    const textarea = document.createElement("textarea");
+    textarea.value = copyValue;
+    textarea.readOnly = true;
+    textarea.tabIndex = -1;
+    textarea.style.cssText = "position:fixed;left:-9999px;top:0;font-size:16px;";
+    // Modal dialogs make nodes outside them inert, including copy fallbacks.
+    (input.closest("dialog") || document.body).append(textarea);
+    let copied = false;
+    try {
+      textarea.focus({ preventScroll: true });
+      textarea.select();
+      textarea.setSelectionRange(0, copyValue.length);
+      copied = document.execCommand("copy");
+    } catch {
+      copied = false;
+    } finally {
+      textarea.remove();
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected)
+        previousFocus.focus({ preventScroll: true });
+    }
+    if (!copied) {
+      input.focus({ preventScroll: true });
+      input.select();
+      input.setSelectionRange(0, input.value.length);
+    }
+    notify(copied ? "已复制" : "请长按或手动复制");
+  };
+  return (
+    <div className="copy-field">
+      <input ref={ref} aria-label={label} readOnly value={value} />
+      <IconButton title={buttonLabel} onClick={copy}>
+        <Copy size={19} />
+      </IconButton>
+    </div>
   );
 }
 
@@ -862,14 +939,6 @@ function RoomScreen({
       setBusy(false);
     }
   };
-  const copy = async (value: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
-      error("已复制");
-    } catch {
-      error("复制失败，可手动选择文字");
-    }
-  };
   const recall = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -1007,7 +1076,12 @@ function RoomScreen({
                   : "重连中"}
             </span>
           </span>
-          <button className="share-button" onClick={() => setModal("share")}>
+          <button
+            className="share-button"
+            aria-label="邀请朋友"
+            title="邀请朋友"
+            onClick={() => setModal("share")}
+          >
             <Link size={16} />
             <span>邀请朋友</span>
           </button>
@@ -1812,15 +1886,7 @@ function RoomScreen({
       )}
       {modal === "share" && (
         <Modal title="邀请朋友" close={() => setModal(null)}>
-          <div className="copy-field">
-            <input aria-label="邀请链接" readOnly value={location.href} />
-            <IconButton
-              title="复制邀请链接"
-              onClick={() => copy(location.href)}
-            >
-              <Copy size={19} />
-            </IconButton>
-          </div>
+          <CopyField label="邀请链接" value={location.href} notify={error} />
           <div className="modal-meta">
             <span>房间编码</span>
             <code>{rid}</code>
@@ -1838,19 +1904,13 @@ function RoomScreen({
           </div>
           <label>
             我的召回码
-            <div className="copy-field">
-              <input
-                aria-label="我的召回码"
-                readOnly
-                value={room.recovery_code.match(/.{1,4}/g)?.join("-")}
-              />
-              <IconButton
-                title="复制召回码"
-                onClick={() => copy(room.recovery_code)}
-              >
-                <Copy size={19} />
-              </IconButton>
-            </div>
+            <CopyField
+              label="我的召回码"
+              buttonLabel="复制召回码"
+              value={room.recovery_code.match(/.{1,4}/g)?.join("-") || room.recovery_code}
+              copyValue={room.recovery_code}
+              notify={error}
+            />
           </label>
           <button
             className="secondary wide"
@@ -2024,7 +2084,9 @@ function RoomScreen({
 function App() {
   const path = () => location.pathname.match(/^\/r\/([\w-]+)\/?$/)?.[1] || null;
   const [rid, setRid] = useState(path);
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState<{ message: string } | null>(null);
+  const [toastHost, setToastHost] = useState<HTMLDialogElement | null>(null);
+  const notify = useCallback((message: string) => setToast({ message }), []);
   useEffect(() => {
     const update = () => setRid(path());
     addEventListener("popstate", update);
@@ -2032,7 +2094,7 @@ function App() {
   }, []);
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(""), 4500);
+    const t = setTimeout(() => setToast(null), 4500);
     return () => clearTimeout(t);
   }, [toast]);
   const enter = (id: string | null) => {
@@ -2040,26 +2102,27 @@ function App() {
     setRid(id);
   };
   return (
-    <>
+    <ToastHostContext.Provider value={setToastHost}>
       {rid ? (
         <RoomScreen
           key={rid}
           rid={rid}
           home={() => enter(null)}
-          error={setToast}
+          error={notify}
         />
       ) : (
-        <Lobby enter={enter} error={setToast} />
+        <Lobby enter={enter} error={notify} />
       )}
-      {toast && (
-        <div className="toast" role="status">
-          {toast}
-          <button aria-label="关闭提示" onClick={() => setToast("")}>
+      {toast && createPortal(
+        <div className={`toast${toastHost ? " modal-toast" : ""}`} role="status">
+          <span>{toast.message}</span>
+          <button aria-label="关闭提示" onClick={() => setToast(null)}>
             <X size={15} />
           </button>
-        </div>
+        </div>,
+        toastHost || document.body,
       )}
-    </>
+    </ToastHostContext.Provider>
   );
 }
 
