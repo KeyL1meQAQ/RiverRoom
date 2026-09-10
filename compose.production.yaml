@@ -1,0 +1,42 @@
+name: river-room
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: poker
+      POSTGRES_USER: poker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - poker-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poker -d poker"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    environment:
+      DATABASE_URL: postgresql+psycopg://poker:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/poker
+      FORWARDED_ALLOW_IPS: "*"
+    ports:
+      - "127.0.0.1:18080:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  poker-db:
