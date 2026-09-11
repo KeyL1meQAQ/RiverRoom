@@ -2573,7 +2573,11 @@ dialog::backdrop {
     padding: 7px 8px 6px;
     align-items: flex-start;
   }
-  .seat.empty {
+  .seat-wrap .seat.empty {
+    /* Empty seats have no hole cards, so center them on the seat anchor. */
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
     margin-top: 0;
   }
   .seat-top {
@@ -2942,14 +2946,20 @@ dialog::backdrop {
     height: auto;
     min-height: 520px;
     max-height: 700px;
-    max-width: 500px;
+    max-width: 400px;
     margin: 0 auto;
   }
-  .table-rail { inset: 3% 5% 5%; border-radius: 64px; border-width: 6px; }
-  .felt, .felt:after { border-radius: 54px; }
-  .felt-brand { display: none; }
+  .table-rail { inset: 3% 5% 5%; border-radius: 50%; border-width: 6px; }
+  .felt, .felt:after { border-radius: 50%; }
+  .felt-brand { display: flex; top: 30%; }
   .table-center { top: 44%; width: calc(100% - 176px); gap: 8px; }
-  .table-center .table-status { display: none; }
+  .table-center .table-status {
+    display: block;
+    position: absolute;
+    top: calc(100% + 8px);
+    max-width: 100%;
+    line-height: 16px;
+  }
   .pot-label { font-size: 11px; white-space: nowrap; }
   .pot-label strong { font-size: 24px; }
   .boards { gap: 8px; }
