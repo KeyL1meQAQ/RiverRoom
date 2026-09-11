@@ -764,6 +764,8 @@ function PokerTable({
             {p && (
               <div
                 className={`hole-cards ${p.folded && playing ? "folded" : ""}`}
+                role={!room.started ? "img" : undefined}
+                aria-label={!room.started ? "底牌区域，尚未发牌" : undefined}
               >
                 {cards?.length ? (
                   cards.map((c, i) =>
@@ -785,6 +787,15 @@ function PokerTable({
                   <>
                     <Card back small />
                     <Card back small />
+                  </>
+                ) : !room.started ? (
+                  <>
+                    <span className="playing-card small hole-card-outline" aria-hidden="true">
+                      <Spade className="hole-card-mark" fill="currentColor" />
+                    </span>
+                    <span className="playing-card small hole-card-outline" aria-hidden="true">
+                      <Spade className="hole-card-mark" fill="currentColor" />
+                    </span>
                   </>
                 ) : null}
               </div>
