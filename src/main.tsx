@@ -8,7 +8,6 @@ import {
   Check,
   ChevronDown,
   Clipboard,
-  Clock3,
   Coins,
   Copy,
   Crown,
@@ -472,15 +471,15 @@ const desktopPositions = [
   [80, 81],
 ];
 const mobilePositions = [
-  [50, 91],
-  [15, 80],
-  [13, 55],
-  [15, 29],
-  [29, 9],
-  [71, 9],
-  [85, 29],
-  [87, 55],
-  [85, 80],
+  [50, 94],
+  [13, 82],
+  [13, 62],
+  [13, 33],
+  [34, 13],
+  [66, 13],
+  [87, 33],
+  [87, 62],
+  [87, 82],
 ];
 
 function potTitle(group: PotResult, hand: Hand) {
@@ -527,16 +526,13 @@ function PokerTable({
   const hand = room.hand;
   const showingResult = !!(hand?.result && now < hand.reveal_until);
   const { boards, animated } = useBoardPresentation(hand, now, connection, sound);
-  const [selection, setSelection] = useState({ hand: 0, group: 0 });
-  const groupIndex = selection.hand === hand?.number ? selection.group : 0;
-  const groups = hand?.showdown_results || [];
-  const group = showingResult ? groups[groupIndex] || groups[0] : undefined;
-  const winningBoard = new Set(group?.winners.flatMap(w => w.cards) || []);
+  const groups = showingResult ? hand?.showdown_results || [] : [];
+  const mainGroups = groups.filter(group => group.pot === 0);
   const ownSeat = (showingResult ? hand!.seats[hand!.ids.indexOf(me.id)] : undefined) ?? me.seat ?? 0;
   const playing = hand && hand.result === null;
   const countdown = Math.max(0, Math.ceil((room.deadline || 0) - now));
   return (
-    <div className="table-stage">
+    <div className={`table-stage ${showingResult ? "showing-result" : ""} ${boards.length > 1 ? "double-board" : ""}`}>
       <div className="table-rail">
         <div className="felt">
           <span className="felt-brand">
@@ -569,7 +565,7 @@ function PokerTable({
               {Array.from({ length: 5 }, (_, j) => (
                 <Card key={`${j}:${board[j] || "empty"}`} code={board[j]}
                   animate={animated.has(`${i}:${j}`)}
-                  winning={group?.board === i && winningBoard.has(board[j])} />
+                  winning={mainGroups.some(group => group.board === i && group.winners.some(w => w.cards.includes(board[j])))} />
               ))}
             </div>
           ))}
@@ -606,26 +602,6 @@ function PokerTable({
                           ? `下一手 · ${countdown}s`
                           : "无限注德州扑克"}
         </div>
-        {showingResult && hand && group ? (
-          <div className="showdown-result" aria-label="摊牌结果">
-            {groups.length > 1 ? <select aria-label="底池结果" value={groupIndex}
-              onChange={event => setSelection({ hand: hand.number, group: Number(event.target.value) })}>
-              {groups.map((item, index) => <option key={index} value={index}>{potTitle(item, hand)}</option>)}
-            </select> : <div className="result-pot-title">{potTitle(group, hand)}</div>}
-            <WinningHands group={group} hand={hand} />
-          </div>
-        ) : showingResult && hand?.result && (
-          <div className="winner-summary">
-            <span>无需摊牌获胜</span>
-            {hand.result
-              .filter((r) => r.won > 0)
-              .map((r) => (
-                <span key={r.pid}>
-                  {r.name} <b>+{n(r.won)}</b>
-                </span>
-              ))}
-          </div>
-        )}
       </div>
       {Array.from({ length: 9 }, (_, seat) => {
         const handPlayer = showingResult ? hand!.ids[hand!.seats.indexOf(seat)] : undefined;
@@ -649,6 +625,15 @@ function PokerTable({
         const tableAction = p && inHand && !actor ? hand.last_actions[p.id] : undefined;
         const betAmount = p && inHand && tableAction !== '弃牌' ? p.bet : 0;
         const cards = inHand || (p && hand?.ids.includes(p.id)) ? p?.cards : [];
+        const labels = p && showingResult ? hand?.public_hand_labels?.[p.id] : undefined;
+        const ownLabels = p?.id === room.me && hand?.own_hand_labels?.length && (playing || showingResult)
+          ? hand.own_hand_labels.map((values, board) => values[boards[board]?.length || 0])
+          : [];
+        const displayedLabels = labels?.length ? labels : ownLabels;
+        const payout = p && showingResult ? hand?.result?.find(result => result.pid === p.id)?.won || 0 : 0;
+        const mainWinner = p && showingResult && hand?.awards.some(award => award.pot === 0 &&
+          (award.winners?.includes(hand.ids.indexOf(p.id)) || award.amounts[hand.ids.indexOf(p.id)] > 0));
+        const winningHoles = new Set(mainGroups.flatMap(group => group.winners.filter(w => w.pid === p?.id).flatMap(w => w.cards)));
         const status = p && showingResult && p.seat === null
           ? "已离座"
           : p?.leave
@@ -664,10 +649,15 @@ function PokerTable({
                   : p?.id === room.me
                     ? "你"
                     : "";
+        const compactStatus = status === "本手后离座"
+          ? "离座中"
+          : status === "等待重买入"
+            ? "重买入"
+            : status;
         return (
           <div
             key={seat}
-            className={`seat-wrap position-${position}`}
+            className={`seat-wrap position-${position} ${p?.id === room.me ? "own-seat" : ""} ${displayedLabels.length || payout ? "has-result" : ""}`}
             style={
               {
                 "--x": `${x}%`,
@@ -679,46 +669,38 @@ function PokerTable({
           >
             {p ? (
               <button
-                className={`seat occupied ${p.id === room.me ? "self" : ""} ${actor ? "acting" : ""} ${p.away || (p.folded && playing) ? "muted" : ""} ${group?.winners.some(w => w.pid === p.id) ? "winning-seat" : ""}`}
+                className={`seat occupied ${p.id === room.me ? "self" : ""} ${actor ? "acting" : ""} ${p.away || (p.folded && playing) ? "muted" : ""} ${mainWinner ? "winning-seat" : ""}`}
                 onClick={() => select(p)}
                 aria-label={`${p.name}，筹码 ${p.stack}`}
               >
                 <div className="seat-top">
-                  <span className="seat-avatar">{p.name.slice(0, 1)}</span>
                   <span className="seat-name">
                     {p.id === room.owner && <Crown size={11} />}
                     {p.name}
                   </span>
                   {!p.online && <WifiOff size={12} className="offline-icon" />}
+                  {compactStatus && compactStatus !== "你" && <span className="seat-state">{compactStatus}</span>}
+                  {actor ? <span className="seat-timer">{bankMode ? "BANK " : ""}{seconds}s</span>
+                    : p.id === room.me && <span className="seat-bank">BANK {Math.ceil(p.bank)}s</span>}
                 </div>
-                <strong className="stack" title={n(p.stack)}>
-                  <span className="stack-full">{n(p.stack)}</span>
-                  <span
-                    className="stack-mobile"
-                    style={{ fontSize: n(p.stack).length > 3 ? 11 : undefined }}
-                  >
-                    {p.stack >= 100000
-                      ? new Intl.NumberFormat("en", {
-                          notation: "compact",
-                          maximumFractionDigits: 1,
-                        }).format(p.stack)
-                      : n(p.stack)}
-                  </span>
-                </strong>
-                <div className="seat-bottom">
-                  {actor ? (
-                    <>
-                      <Clock3 size={12} />
-                      <span>
-                        {bankMode ? "BANK " : ""}
-                        {seconds}s
-                      </span>
-                    </>
-                  ) : (
-                    <span>
-                      {status || `${seat + 1} 号位`}
+                <div className="seat-stack-row">
+                  <strong className="stack" title={n(p.stack)}>
+                    <span className="stack-full">{n(p.stack)}</span>
+                    <span
+                      className="stack-mobile"
+                      style={{ fontSize: n(p.stack).length > 3 ? 11 : undefined }}
+                    >
+                      {p.stack >= 100000
+                        ? new Intl.NumberFormat("en", {
+                            notation: "compact",
+                            maximumFractionDigits: 1,
+                          }).format(p.stack)
+                        : n(p.stack)}
                     </span>
-                  )}
+                  </strong>
+                  {payout > 0 && <strong className="seat-payout"
+                    style={{ '--amount-length': n(payout).length } as React.CSSProperties}
+                    aria-label={`获胜 ${n(payout)}`}>+{n(payout)}</strong>}
                 </div>
                 {actor && (
                   <div
@@ -776,10 +758,10 @@ function PokerTable({
                         disabled={revealing || hand.shown_cards[p.id]?.includes(i)}
                         onClick={() => reveal([i])}
                       >
-                        <Card code={c} small winning={!!c && !!group?.winners.find(w => w.pid === p.id)?.cards.includes(c)} />
+                        <Card code={c} small winning={!!c && winningHoles.has(c)} />
                       </button>
                     ) : <Card key={i} code={c} back={c === null} small
-                      winning={!!c && !!group?.winners.find(w => w.pid === p.id)?.cards.includes(c)} />,
+                      winning={!!c && winningHoles.has(c)} />,
                   )
                 ) : inHand && !p.folded ? (
                   <>
@@ -792,14 +774,17 @@ function PokerTable({
             {p?.folded && playing && !cards?.length && (
               <span className="folded-cards" aria-hidden="true"><X size={42} /></span>
             )}
-            {p?.id === room.me && hand?.own_hand_labels?.length && (playing || showingResult) ? (
-              <div className="own-hand-label" aria-label="本人成牌">
-                {hand.own_hand_labels.map((labels, i) => <span key={i}>
-                  {hand.own_hand_labels!.length > 1 ? `${i === 0 ? "第一次" : "第二次"}：` : ""}
-                  {labels[boards[i]?.length || 0]}
-                </span>)}
-              </div>
-            ) : null}
+            {p && displayedLabels.length > 0 && <div
+              className={`seat-hand-label ${p.id === room.me ? "own-hand-label" : "public-hand-label"}`}
+              aria-label={p.id === room.me ? "本人成牌" : `${p.name}的摊牌牌型`}>
+              {displayedLabels.map((label, board) => {
+                const boardWinner = mainGroups.some(group => group.board === board && group.winners.some(w => w.pid === p.id));
+                return <span className={boardWinner ? "won-main" : ""} key={board} data-board={board}
+                  title={`${displayedLabels.length > 1 ? `第 ${board + 1} 次：` : ""}${label}`}>
+                  {displayedLabels.length > 1 && <small>{board + 1}</small>}{label}
+                </span>;
+              })}
+            </div>}
           </div>
         );
       })}
@@ -833,7 +818,7 @@ function RoomScreen({
   const [raise, setRaise] = useState(4);
   const [code, setCode] = useState("");
   const [config, setConfig] = useState(defaults);
-  const [target, setTarget] = useState<Player | null>(null);
+  const [targetSnapshot, setTarget] = useState<Player | null>(null);
   const [busy, setBusy] = useState(false);
   const [panel, setPanel] = useState<"log" | "stats" | "history" | "manage">(
     "log",
@@ -972,6 +957,7 @@ function RoomScreen({
     );
   const me = room.players.find((p) => p.id === room.me)!;
   const owner = room.owner === room.me;
+  const target = room.players.find(p => p.id === targetSnapshot?.id) || targetSnapshot;
   const hand = room.hand;
   const active = hand && hand.result === null;
   const showWindow = !!(hand?.result && hand.cards[me.id]?.length &&
@@ -980,6 +966,11 @@ function RoomScreen({
     void send({ type: "show_cards", hand: hand?.number, cards });
   };
   const mayAct = room.legal && !room.recovery && status === "connected";
+  const legal = room.legal || { call: 0, fold: false, can_raise: false,
+    min_raise: room.settings.bb * 2, max_raise: Math.max(room.settings.bb * 2, me.stack + me.bet) };
+  const canRaise = !!mayAct && legal.can_raise && !busy;
+  const bettingStage = !!active && me.seat !== null && ["betting", "dealing"].includes(room.phase);
+  const pendingApprovals = room.requests.filter(request => !request.approved).length;
   const awaiting = room.requests.find((r) => r.pid === room.me);
   const countdown = Math.max(0, Math.ceil((room.deadline || 0) - now));
   const openSeat = (s: number) => {
@@ -1056,6 +1047,10 @@ function RoomScreen({
           </div>
         </div>
         <div className="header-right">
+          {owner && pendingApprovals > 0 && <IconButton title={`待审批 ${pendingApprovals} 项`}
+            className="approval-button" onClick={() => { setPanel("manage"); setDrawer(true); }}>
+            <ShieldCheck size={18} /><span className="approval-count">{pendingApprovals}</span>
+          </IconButton>}
           <IconButton title={sound.muted ? "开启发牌音效" : "关闭发牌音效"} onClick={sound.toggle}>
             {sound.muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
           </IconButton>
@@ -1623,23 +1618,24 @@ function RoomScreen({
                 {awaiting ? "等待房主审批" : "重买入"}
               </button>
             </div>
-          ) : mayAct ? (
+          ) : mayAct || bettingStage ? (
+            <div className={`betting-area ${!mayAct ? "betting-idle" : ""}`}>
             <div className="bet-controls">
               <div className="raise-options">
                 <div className="quick-bets">
                   {[0.5, 0.75, 1].map((f) => (
                     <button
                       key={f}
-                      disabled={!room.legal!.can_raise}
+                      disabled={!canRaise}
                       onClick={() =>
                         setRaise(
                           Math.min(
-                            room.legal!.max_raise!,
+                            legal.max_raise!,
                             Math.max(
-                              room.legal!.min_raise!,
+                              legal.min_raise!,
                               Math.ceil(
-                                (room.pot + room.legal!.call) * f +
-                                  room.legal!.call +
+                                (room.pot + legal.call) * f +
+                                  legal.call +
                                   me.bet,
                               ),
                             ),
@@ -1651,8 +1647,8 @@ function RoomScreen({
                     </button>
                   ))}
                   <button
-                    disabled={!room.legal!.can_raise}
-                    onClick={() => setRaise(room.legal!.max_raise!)}
+                    disabled={!canRaise}
+                    onClick={() => setRaise(legal.max_raise!)}
                   >
                     全下
                   </button>
@@ -1660,9 +1656,9 @@ function RoomScreen({
                 <input
                   aria-label="加注滑块"
                   type="range"
-                  disabled={!room.legal!.can_raise}
-                  min={room.legal!.min_raise || 0}
-                  max={room.legal!.max_raise || 1}
+                  disabled={!canRaise}
+                  min={legal.min_raise || 0}
+                  max={legal.max_raise || 1}
                   step="1"
                   value={raise}
                   onChange={(e) => setRaise(Number(e.target.value))}
@@ -1671,9 +1667,9 @@ function RoomScreen({
                   aria-label="加注金额"
                   className="raise-input"
                   type="number"
-                  disabled={!room.legal!.can_raise}
-                  min={room.legal!.min_raise || 0}
-                  max={room.legal!.max_raise || 1}
+                  disabled={!canRaise}
+                  min={legal.min_raise || 0}
+                  max={legal.max_raise || 1}
                   step="1"
                   value={raise}
                   onChange={(e) => setRaise(Number(e.target.value))}
@@ -1682,36 +1678,45 @@ function RoomScreen({
               <div className="bet-buttons">
                 <button
                   className="fold-button"
-                  disabled={busy || !room.legal!.fold}
+                  disabled={busy || !mayAct || !legal.fold}
                   onClick={() => wager("fold")}
                 >
                   弃牌
                 </button>
                 <button
                   className="call-button"
-                  disabled={busy}
+                  disabled={busy || !mayAct}
                   onClick={() => wager("call")}
                 >
-                  {room.legal!.call ? `跟注 ${n(room.legal!.call)}` : "过牌"}
+                  {legal.call ? `跟注 ${n(legal.call)}` : "过牌"}
                 </button>
                 <button
                   className="primary"
                   disabled={
-                    busy ||
-                    !room.legal!.can_raise ||
-                    raise < (room.legal!.min_raise || 0) ||
-                    raise > (room.legal!.max_raise || 0)
+                    !canRaise ||
+                    raise < (legal.min_raise || 0) ||
+                    raise > (legal.max_raise || 0)
                   }
                   onClick={() => wager("raise", raise)}
                 >
-                  {raise === room.legal!.max_raise
+                  {raise === legal.max_raise
                     ? "全下"
-                    : me.bet || room.legal!.call
+                    : me.bet || legal.call
                       ? "加注到"
                       : "下注"}{" "}
                   {n(raise)}
                 </button>
               </div>
+            </div>
+            {!mayAct && <div className="wait-actions">
+              {awaiting ? <>
+                <span>{awaiting.approved ? "已批准，本手结束后到账" : "等待房主审批"}</span>
+                {!awaiting.approved && <button className="text-button"
+                  onClick={() => send({ type: "cancel_request", request: awaiting.id })}>取消申请</button>}
+              </> : me.away ? <button className="primary" disabled={busy || me.stack === 0}
+                onClick={() => send({ type: "away", value: false })}><Play size={17} />回到游戏</button>
+                : <span>{me.leave ? "本手结束后离座结算" : me.folded ? "已弃牌，等待本手结束" : "等待其他玩家行动"}</span>}
+            </div>}
             </div>
           ) : (
             <div className={`wait-actions ${showWindow && !awaiting ? "reveal-idle" : ""}`}>
@@ -1984,6 +1989,23 @@ function RoomScreen({
               </b>
             </span>
           </div>
+          {target.id === me.id && me.seat !== null && <div className="modal-actions personal-actions">
+            <button className="secondary" disabled={busy || !!room.closed_at || (me.away && me.stack === 0)}
+              onClick={() => send({ type: "away", value: !me.away }, true)}>
+              {me.away ? <Play size={16} /> : <Pause size={16} />}{me.away ? "回到游戏" : "AWAY"}
+            </button>
+            <button className="secondary" disabled={busy || !!awaiting || !!room.closed_at} onClick={openTopup}>
+              <Coins size={16} />补码
+            </button>
+            <button className="secondary" disabled={busy || me.leave || !!room.closed_at} onClick={() => setModal("leave")}>
+              <LogOut size={16} />离座
+            </button>
+          </div>}
+          {target.id === me.id && awaiting && <div className="wait-actions personal-request">
+            <span>{awaiting.approved ? "已批准，本手结束后到账" : "等待房主审批"}</span>
+            {!awaiting.approved && <button className="text-button" disabled={busy}
+              onClick={() => send({ type: "cancel_request", request: awaiting.id })}>取消申请</button>}
+          </div>}
           {owner && !room.closed_at && (
             <div className="modal-actions">
               <button

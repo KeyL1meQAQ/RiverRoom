@@ -45,6 +45,18 @@ def own_labels(hand, viewer):
             for board in hand.get('boards', [[]])]
 
 
+def public_labels(hand):
+    if hand['result'] is None:
+        return {}
+    # Only public hole cards may contribute to a shared hand description.
+    return {
+        pid: [describe(tuple(holes), tuple(board))[0] for board in hand.get('boards', [[]])]
+        for pid, holes in hand['dealt'].items()
+        if len(holes) == 2 and (pid in hand['revealed'] or
+                               set(hand.get('shown_cards', {}).get(pid, [])) == {0, 1})
+    }
+
+
 def showdown_results(hand):
     if not any(name == 'show_or_muck_hole_cards' for name, _ in hand['ops']):
         return []

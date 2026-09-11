@@ -37,7 +37,7 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
   const push = await mount(page, 'table_actions');
   const labels = page.locator('.seat-bet .bet-action');
   await expect(labels).toHaveText(['过牌', '过牌', '下注', '跟注', '加注', '弃牌', '全下', '全下']);
-  await expect(page.locator('.seat-bottom').filter({ hasText: /^(过牌|下注|跟注|加注|全下|弃牌)$/ })).toHaveCount(0);
+  await expect(page.locator('.seat-top, .seat-stack-row').filter({ hasText: /^(过牌|下注|跟注|加注|全下|弃牌)$/ })).toHaveCount(0);
   const initial = structuredClone(fixtures.table_actions);
   const huge = structuredClone(initial);
   for (const player of huge.players) {
@@ -64,7 +64,7 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
       const issues = await page.evaluate(() => {
         const badges = [...document.querySelectorAll('.seat-bet')];
-        const blockers = [...document.querySelectorAll('.occupied, .seat-name, .stack, .seat-bottom, .hole-cards, .boards, .own-hand-label, .table-status, .pot-label')];
+        const blockers = [...document.querySelectorAll('.occupied, .seat-name, .stack, .seat-payout, .hole-cards, .boards, .seat-hand-label, .table-status, .pot-label')];
         const intersects = (a: DOMRect, b: DOMRect) =>
           Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1 &&
           Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1;
@@ -76,8 +76,16 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
             Math.min(rect.bottom, seat.bottom) - Math.max(rect.top, seat.top),
           );
           const collisions = [...blockers, ...badges.slice(index + 1)].filter(other => {
-            if (innerWidth > 760 && other.matches('.occupied') && other.parentElement === badge.parentElement) return false;
             const otherRect = other.getBoundingClientRect();
+            if (other.matches('.occupied') && other.parentElement === badge.parentElement) {
+              if (innerWidth > 760 || overlap <= 4.5) return false;
+            }
+            if (other.matches('.hole-cards') && other.parentElement === badge.parentElement) {
+              const horizontal = Math.min(rect.right, otherRect.right) - Math.max(rect.left, otherRect.left);
+              const vertical = Math.min(rect.bottom, otherRect.bottom) - Math.max(rect.top, otherRect.top);
+              const allowed = innerWidth > 760 ? 8.5 : 4.5;
+              if (horizontal <= allowed || vertical <= allowed) return false;
+            }
             return otherRect.width && otherRect.height && intersects(rect, otherRect);
           });
           const textOverflow = [...badge.children].some(child => {
@@ -91,6 +99,8 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
             ...(textOverflow ? [`${badge.textContent} text overflow`] : []),
             ...(innerWidth > 760 && Math.abs(overlap - 8) > 1
               ? [`${badge.parentElement!.className} overlap is ${overlap}px`] : []),
+            ...(innerWidth <= 760 && !['position-0', 'position-1', 'position-8'].some(name => badge.parentElement!.classList.contains(name)) && Math.abs(overlap - 4) > 1
+              ? [`${badge.parentElement!.className} mobile overlap is ${overlap}px`] : []),
             ...(innerWidth > 760 && badge.children.length === 2 &&
               Math.abs(badge.children[0].getBoundingClientRect().top - badge.children[1].getBoundingClientRect().top) > 1
               ? [`${badge.textContent} is not on one line`] : []),
@@ -115,9 +125,11 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
   await page.locator('.side-panel').getByRole('button', { name: '关闭侧栏', exact: true }).click();
   await expect(page.locator('.side-panel')).not.toBeInViewport();
   const desktopCards = await page.locator('.position-0 .hole-cards').boundingBox();
-  const desktopInfo = await page.locator('.position-0 .seat-top').boundingBox();
-  expect(desktopCards!.x + desktopCards!.width).toBeLessThan(desktopInfo!.x);
-  expect(Math.abs(desktopCards!.y - desktopInfo!.y)).toBeLessThan(30);
+  const desktopFrame = await page.locator('.position-0 .seat.occupied').boundingBox();
+  expect(desktopCards!.x).toBeLessThan(desktopFrame!.x);
+  expect(desktopCards!.x + desktopCards!.width - desktopFrame!.x).toBeCloseTo(8, 0);
+  expect(Math.min(desktopCards!.y + desktopCards!.height, desktopFrame!.y + desktopFrame!.height) -
+    Math.max(desktopCards!.y, desktopFrame!.y)).toBeGreaterThan(20);
   await page.setViewportSize({ width: 320, height: 568 });
   const ownAction = structuredClone(initial);
   ownAction.me = ownAction.players.find(player => ownAction.hand!.last_actions[player.id] === '加注')!.id;
@@ -125,7 +137,7 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
   await expect(page.locator('.position-0 .seat-bet')).toHaveText('加注100');
   const ownBadge = await page.locator('.position-0 .seat-bet').boundingBox();
   const ownCards = await page.locator('.position-0 .hole-cards').boundingBox();
-  expect(ownBadge!.x + ownBadge!.width).toBeLessThan(ownCards!.x);
+  expect(ownBadge!.y + ownBadge!.height).toBeLessThan(ownCards!.y);
   const nextTurn = structuredClone(initial);
   const checker = nextTurn.players.find(player => nextTurn.hand!.last_actions[player.id] === '过牌')!;
   nextTurn.hand!.clock!.pid = checker.id;
@@ -194,17 +206,17 @@ test("nine tied winners highlight only the board, remain inspectable in history,
   await expect(page.locator(".boards .winning-card")).toHaveCount(5);
   await expect(page.locator(".hole-cards .winning-card")).toHaveCount(0);
   await expect(page.locator(".winning-seat")).toHaveCount(9);
-  await expect(page.locator(".showdown-result .winning-hand")).toHaveCount(9);
-  await expect(page.getByLabel("本人成牌")).toHaveText("皇家同花顺");
+  await expect(page.locator(".seat-hand-label")).toHaveCount(9);
+  await expect(page.locator(".showdown-result")).toHaveCount(0);
   for (const [name, width, height] of [["desktop", 1440, 960], ["mobile", 390, 844], ["narrow", 360, 740], ["compact", 320, 568]] as const) {
     await page.setViewportSize({ width, height });
     if (width < 760) await expect(page.locator(".side-panel")).not.toBeInViewport();
     push("tie");
-    if (height < 700) await page.getByLabel("本人成牌").scrollIntoViewIfNeeded();
+    if (height < 700) await page.locator(".own-seat").scrollIntoViewIfNeeded();
     await page.screenshot({ path: `artifacts/presentation-tie-${name}.png`, fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
     const collision = await page.evaluate(() => {
-      return [".boards", ".showdown-result", ".own-hand-label"].some(selector => {
+      return [".boards"].some(selector => {
         const content = document.querySelector(selector)!.getBoundingClientRect();
         return [...document.querySelectorAll(".seat.occupied")].some(seat => {
           const rect = seat.getBoundingClientRect();
@@ -213,13 +225,7 @@ test("nine tied winners highlight only the board, remain inspectable in history,
       });
     });
     expect(collision).toBeFalsy();
-    const hintOverlapsResult = await page.evaluate(() => {
-      const hint = document.querySelector(".own-hand-label")!.getBoundingClientRect();
-      const result = document.querySelector(".showdown-result")!.getBoundingClientRect();
-      return hint.top < result.bottom && hint.bottom > result.top;
-    });
-    expect(hintOverlapsResult).toBeFalsy();
-    const hint = await page.getByLabel("本人成牌").boundingBox();
+    const hint = await page.locator(".own-seat").boundingBox();
     const controls = await page.locator(".action-bar").boundingBox();
     expect(hint!.y + hint!.height).toBeLessThanOrEqual(controls!.y);
   }
@@ -231,27 +237,36 @@ test("nine tied winners highlight only the board, remain inspectable in history,
   expect(errors).toEqual([]);
 });
 
-test("two runouts and side pots switch the complete winner group", async ({ page }) => {
+test("both runouts highlight all main-pot winners while side-pot winners only show labels and payouts", async ({ page }) => {
   const push = await mount(page, "twice");
   const groups = fixtures.twice.hand!.showdown_results!;
   expect(groups.length).toBeGreaterThanOrEqual(4);
-  const select = page.getByRole("combobox", { name: "底池结果" });
-  for (let index = 0; index < groups.length; index++) {
-    push("twice");
-    await select.selectOption(String(index));
-    await expect(page.locator(".showdown-result .winning-hand")).toHaveCount(groups[index].winners.length);
-    await expect(page.locator(".winning-seat")).toHaveCount(groups[index].winners.length);
-    const displayed = await page.locator(".showdown-result .playing-card").evaluateAll(cards => cards.map(card => card.getAttribute("aria-label")));
-    expect(displayed).toEqual(groups[index].winners.flatMap(winner => winner.cards));
-    const boardCards = fixtures.twice.hand!.boards[groups[index].board];
-    const expected = new Set(groups[index].winners.flatMap(winner => winner.cards).filter(card => boardCards.includes(card)));
-    await expect(page.locator(".boards .winning-card")).toHaveCount(expected.size);
+  const main = groups.filter(group => group.pot === 0);
+  const mainIds = new Set(main.flatMap(group => group.winners.map(winner => winner.pid)));
+  await expect(page.getByRole("combobox", { name: "底池结果" })).toHaveCount(0);
+  await expect(page.locator(".winning-seat")).toHaveCount(mainIds.size);
+  for (const player of fixtures.twice.players.filter(player => player.seat !== null)) {
+    const seat = page.getByRole('button', { name: `${player.name}，筹码 ${player.stack}`, exact: true });
+    if (mainIds.has(player.id)) await expect(seat).toHaveClass(/winning-seat/);
+    else await expect(seat).not.toHaveClass(/winning-seat/);
+    for (let board = 0; board < 2; board++) {
+      const row = seat.locator('..').locator(`.seat-hand-label > span[data-board="${board}"]`);
+      await expect(row).toContainText(fixtures.twice.hand!.public_hand_labels![player.id][board]);
+    }
+    const payout = fixtures.twice.hand!.result!.find(result => result.pid === player.id)!.won;
+    if (payout > 0) await expect(seat.locator('.seat-payout')).toHaveText(`+${payout.toLocaleString('zh-CN')}`);
+    else await expect(seat.locator('.seat-payout')).toHaveCount(0);
+    const expectedHoles = new Set(main.flatMap(group => group.winners.filter(w => w.pid === player.id).flatMap(w => w.cards)).filter(card => player.cards.includes(card)));
+    await expect(seat.locator('..').locator('.hole-cards .winning-card')).toHaveCount(expectedHoles.size);
+  }
+  for (let board = 0; board < 2; board++) {
+    const expected = new Set(main.filter(group => group.board === board).flatMap(group => group.winners.flatMap(w => w.cards)).filter(card => fixtures.twice.hand!.boards[board].includes(card)));
+    await expect(page.locator('.board').nth(board).locator('.winning-card')).toHaveCount(expected.size);
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator(".side-panel")).not.toBeInViewport();
   push("twice");
-  await expect(page.getByLabel("本人成牌")).toContainText("第一次：");
-  await expect(page.getByLabel("本人成牌")).toContainText("第二次：");
+  await expect(page.locator('.own-seat .seat-hand-label > span')).toHaveCount(2);
   await page.screenshot({ path: "artifacts/presentation-twice-mobile.png", fullPage: true });
 });
 
@@ -262,4 +277,153 @@ test("folded personal hand keeps updating while spectators receive no hint", asy
   await expect(page.getByLabel("本人成牌")).toHaveText("三条[Q]");
   push("tie_observer");
   await expect(page.getByLabel("本人成牌")).toHaveCount(0);
+});
+
+test('side-pot-only winner is visible without a winning frame or highlighted hole cards', async ({ page }) => {
+  await mount(page, 'side_pots');
+  const hand = fixtures.side_pots.hand!;
+  const mainIds = hand.showdown_results!.filter(g => g.pot === 0).flatMap(g => g.winners.map(w => w.pid));
+  const sideWinner = hand.showdown_results!.filter(g => g.pot > 0).flatMap(g => g.winners).find(w => !mainIds.includes(w.pid))!;
+  expect(sideWinner).toBeTruthy();
+  const player = fixtures.side_pots.players.find(p => p.id === sideWinner.pid)!;
+  const seat = page.getByRole('button', { name: `${player.name}，筹码 ${player.stack}`, exact: true });
+  await expect(seat).not.toHaveClass(/winning-seat/);
+  await expect(seat.locator('..').locator('.seat-hand-label')).toContainText(sideWinner.label);
+  await expect(seat.locator('.seat-payout')).toBeVisible();
+  await expect(seat.locator('..').locator('.hole-cards .winning-card')).toHaveCount(0);
+});
+
+test('nine-player double runout and ordinary play fit with readable cards and seat results', async ({ page }) => {
+  const push = await mount(page, 'nine_twice');
+  for (const [name, width, height] of [
+    ['desktop', 1440, 960], ['laptop', 1366, 768], ['small-desktop', 800, 800],
+    ['mobile', 390, 844], ['narrow', 360, 740], ['compact', 320, 568],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    for (const fixture of ['nine_twice', 'table_actions'] as const) {
+      push(fixture);
+      await expect(page.locator('.seat.occupied')).toHaveCount(9);
+      await expect(page.locator('.table-stage .seat-avatar, .table-stage .seat-bottom')).toHaveCount(0);
+      await expect(page.locator('.table-stage .seat-top')).toHaveCount(9);
+      await expect(page.locator('.table-stage .seat-stack-row')).toHaveCount(9);
+      if (fixture === 'nine_twice') {
+        await expect(page.locator('.seat-hand-label > span')).toHaveCount(18);
+        await expect(page.locator('.boards .winning-card')).toHaveCount(10);
+        await expect(page.locator('.seat-payout')).toHaveCount(fixtures.nine_twice.hand!.result!.filter(result => result.won > 0).length);
+      }
+      const issues = await page.evaluate(() => {
+        const overlaps = (a: DOMRect, b: DOMRect) =>
+          Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1 &&
+          Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1;
+        const cards = [...document.querySelectorAll('.hole-cards')];
+        const texts = [...document.querySelectorAll('.seat-top, .stack, .seat-payout')]
+          .filter(node => node.getBoundingClientRect().height > 0);
+        const boards = document.querySelector('.boards')!.getBoundingClientRect();
+        const issues = cards.flatMap(card => texts.filter(text => overlaps(card.getBoundingClientRect(), text.getBoundingClientRect()))
+          .map(text => `${card.parentElement!.className} cards overlap ${text.parentElement!.className} ${text.className}`));
+        for (const seat of document.querySelectorAll('.seat.occupied')) {
+          if (overlaps(boards, seat.getBoundingClientRect())) issues.push('board overlaps seat');
+          const stack = seat.querySelector('.stack')!;
+          const stackText = document.createRange();
+          stackText.selectNodeContents(stack);
+          const textBounds = stackText.getBoundingClientRect();
+          const stackBounds = stack.getBoundingClientRect();
+          if (textBounds.height > stackBounds.height + 1) issues.push('stack text vertically clipped');
+        }
+        for (const wrap of document.querySelectorAll('.seat-wrap:has(.seat.occupied)')) {
+          const frame = wrap.querySelector('.seat.occupied')!.getBoundingClientRect();
+          const cards = wrap.querySelector('.hole-cards')?.getBoundingClientRect();
+          const label = wrap.querySelector('.seat-hand-label')?.getBoundingClientRect();
+          if (cards?.width) {
+            if (innerWidth > 760) {
+              const cardOverlap = cards.right - frame.left;
+              if (Math.abs(cardOverlap - 8) > 1) issues.push(`${wrap.className} card overlap is ${cardOverlap}px`);
+              if (label && label.top < cards.bottom - 1) issues.push(`${wrap.className} hand label is not below cards`);
+            } else {
+              const cardOverlap = cards.bottom - frame.top;
+              if (Math.abs(cardOverlap - 4) > 1) issues.push(`${wrap.className} mobile card overlap is ${cardOverlap}px`);
+              if (label?.left < 0 || label?.right > innerWidth) issues.push(`${wrap.className} hand label leaves viewport`);
+              if (label && wrap.classList.contains('own-seat') && label.top < frame.bottom + 2) {
+                issues.push('own hand label is not below frame');
+              }
+              if (label && !wrap.classList.contains('own-seat')) {
+                const labelOverlap = Math.min(label.bottom, frame.bottom) - Math.max(label.top, frame.top);
+                if (labelOverlap < 3 || labelOverlap > 7) issues.push(`${wrap.className} public label overlap is ${labelOverlap}px`);
+                if (Math.abs(label.right - frame.right - 2) > 1) issues.push(`${wrap.className} public label is not right aligned`);
+              }
+            }
+          }
+        }
+        const hint = document.querySelector('.own-hand-label');
+        if (hint) for (const text of hint.parentElement!.querySelectorAll('.seat-top, .stack, .seat-payout')) {
+          if (overlaps(hint.getBoundingClientRect(), text.getBoundingClientRect())) issues.push(`own hint overlaps ${text.className}`);
+        }
+        if (document.documentElement.scrollWidth > innerWidth) issues.push('horizontal overflow');
+        if (innerWidth <= 760 && innerHeight >= 740) {
+          const main = document.querySelector('.room-main')!;
+          if (main.scrollHeight > main.clientHeight + 1) issues.push('table needs scrolling');
+          const footer = document.querySelector('.action-bar')!.getBoundingClientRect();
+          for (const seat of document.querySelectorAll('.seat-wrap')) {
+            if (seat.getBoundingClientRect().bottom > footer.top) issues.push('seat covered by controls');
+          }
+        }
+        return issues;
+      });
+      expect.soft(issues, `${name} ${fixture}`).toEqual([]);
+      await page.screenshot({ path: `artifacts/mobile-layout-${fixture}-${name}.png`, fullPage: true });
+      if (width > 340 && width <= 760) {
+        const card = await page.locator('.position-4 .hole-cards .playing-card').first().boundingBox();
+        expect(card!.width).toBeGreaterThanOrEqual(28);
+        expect(card!.height).toBeGreaterThanOrEqual(40);
+      }
+    }
+  }
+});
+
+test('mobile controls remain stable between turns and personal tools use live player state', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  const push = await mount(page, 'table_actions');
+  const before = await page.locator('.action-bar').boundingBox();
+  await expect(page.getByLabel('加注金额', { exact: true })).toBeVisible();
+  const waiting = structuredClone(fixtures.table_actions);
+  waiting.legal = null;
+  waiting.hand!.clock!.pid = waiting.players.find(p => p.id !== waiting.me && p.seat !== null)!.id;
+  push(waiting);
+  await expect(page.getByLabel('加注金额', { exact: true })).toBeDisabled();
+  await expect(page.getByLabel('加注滑块', { exact: true })).toBeDisabled();
+  expect(await page.locator('.action-bar').boundingBox()).toEqual(before);
+  await page.locator('.own-seat .occupied').click();
+  await expect(page.getByRole('dialog').getByRole('button', { name: '补码', exact: true })).toBeVisible();
+  const updated = structuredClone(waiting);
+  updated.players.find(p => p.id === updated.me)!.away = true;
+  push(updated);
+  await expect(page.getByRole('dialog').getByRole('button', { name: '回到游戏', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog').getByRole('button', { name: '离座', exact: true })).toBeVisible();
+  const me = updated.players.find(p => p.id === updated.me)!;
+  updated.requests = [{ id: 'pending-topup', kind: 'topup', pid: me.id, name: me.name,
+    seat: me.seat!, amount: 200, approved: false }];
+  push(updated);
+  await expect(page.getByRole('dialog').getByText('等待房主审批', { exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog').getByRole('button', { name: '取消申请', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog').getByRole('button', { name: '补码', exact: true })).toBeDisabled();
+});
+
+test('mobile approval shortcut counts actionable requests and opens management', async ({ page }) => {
+  const state = structuredClone(fixtures.table_actions);
+  state.requests = state.players.filter(p => p.seat !== null && p.id !== state.me).slice(0, 2).map((p, i) => ({
+    id: `request-${i}`, kind: 'topup', pid: p.id, name: p.name, seat: p.seat!, amount: 200, approved: i === 1,
+  }));
+  const push = await mount(page, state);
+  for (const width of [390, 360, 320]) {
+    await page.setViewportSize({ width, height: 740 });
+    push(state);
+    await expect(page.getByRole('button', { name: '待审批 1 项', exact: true })).toBeVisible();
+    const left = await page.locator('.header-left').boundingBox();
+    const right = await page.locator('.header-right').boundingBox();
+    expect(left!.x + left!.width).toBeLessThanOrEqual(right!.x + 1);
+    expect(right!.x + right!.width).toBeLessThanOrEqual(width);
+  }
+  await page.getByRole('button', { name: '待审批 1 项', exact: true }).click();
+  await expect(page.locator('.side-panel')).toBeInViewport();
+  await expect(page.getByRole('button', { name: `批准 ${state.requests[0].name}`, exact: true })).toBeVisible();
 });

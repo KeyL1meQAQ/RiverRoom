@@ -43,13 +43,14 @@ export type Hand = {
   boards: string[][];
   deal?: { seq: number; start: number; until: number; previous: number[] } | null;
   own_hand_labels?: string[][];
+  public_hand_labels?: Record<string, string[]>;
   showdown_results?: PotResult[];
   cards: Record<string, (string | null)[]>;
   revealed: string[];
   shown_cards: Record<string, number[]>;
   reveal_until: number;
   result: { pid: string; name: string; delta: number; won: number }[] | null;
-  awards: { amounts: number[]; pot: number; board: number | null }[];
+  awards: { amounts: number[]; pot: number; board: number | null; winners?: number[] }[];
   votes: Record<string, boolean>;
   voters: string[];
   runouts: number | null;

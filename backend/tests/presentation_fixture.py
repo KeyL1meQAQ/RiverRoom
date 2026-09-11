@@ -32,6 +32,17 @@ def snapshots():
         result['tie_observer'] = game.view(room, observer, room['hand']['finished_at'])
 
     with pytest.MonkeyPatch.context() as patch:
+        room, ids, _ = fixed_table(patch, holes, stacks=(1,) * 9, twice=True,
+                                  board=('Ts', 'Js', 'Qs', 'Ks', 'As'), board2=('Th', 'Jh', 'Qh', 'Kh', 'Ah'))
+        room['paused'] = True
+        while room['phase'] == 'betting':
+            action(room)
+        for pid in ids:
+            game.command(room, pid, {'type': 'vote', 'value': True}, 1002)
+        settle_dealing(room)
+        result['nine_twice'] = game.view(room, room['owner'], room['hand']['finished_at'])
+
+    with pytest.MonkeyPatch.context() as patch:
         room, ids, observer = fixed_table(patch, holes, stacks=(200,) * 9)
         room['paused'] = True
         for _ in range(9):
@@ -45,6 +56,14 @@ def snapshots():
         action(room, 'raise', 198)
         action(room)
         result['table_actions'] = copy.deepcopy(game.view(room, room['owner'], 1002))
+
+    with pytest.MonkeyPatch.context() as patch:
+        room, ids, observer = fixed_table(patch, [('Ac', 'Ad'), ('Kc', 'Kd'), ('Qc', 'Qd')], stacks=(200, 40, 100))
+        room['paused'] = True
+        action(room, 'raise', 200)
+        action(room)
+        action(room)
+        result['side_pots'] = game.view(room, observer, room['hand']['finished_at'])
 
     with pytest.MonkeyPatch.context() as patch:
         room, ids, observer = fixed_table(patch, [('Ac', 'Ad'), ('Kc', 'Kd'), ('Qc', 'Qd')],

@@ -259,6 +259,33 @@ def test_fold_win_never_publishes_winner_hand_description(monkeypatch):
     for state in [game.view(room, observer, 1002)['hand'], game.public_hand(room['history'][0], observer)]:
         assert state['showdown_results'] == []
         assert state['cards'] == {}
+        assert state['public_hand_labels'] == {}
+
+
+def test_public_labels_include_revealed_losers_but_not_hidden_hands(monkeypatch):
+    room, ids, observer = fixed_table(monkeypatch, [('Kc', 'Kd'), ('Qc', 'Qd'), ('Ac', 'Ad'), ('Tc', 'Td')])
+    finish(room)
+    expected = {ids[0]: ['一对[K]'], ids[1]: ['一对[Q]'], ids[2]: ['一对[A]']}
+    for viewer in [observer, *ids]:
+        view = game.view(room, viewer, room['hand']['finished_at'])
+        assert view['hand']['public_hand_labels'] == expected
+        assert view['history'][-1]['public_hand_labels'] == expected
+
+
+def test_partial_voluntary_reveal_cannot_leak_hand_label(monkeypatch):
+    room, ids, observer = fixed_table(monkeypatch, [('Ac', 'Ad'), ('Kc', 'Kd'), ('Qc', 'Qd')])
+    folded = room['hand']['clock']['pid']
+    action(room, 'fold')
+    finish(room)
+    hand = room['hand']
+    now = hand['finished_at'] + 1
+    game.command(room, folded, dict(type='show_cards', hand=hand['number'], cards=[0]), now)
+    for viewer in [observer, folded]:
+        assert folded not in game.view(room, viewer, now)['hand']['public_hand_labels']
+    game.command(room, folded, dict(type='show_cards', hand=hand['number'], cards=[1]), now)
+    state = game.view(room, observer, now)
+    assert state['hand']['public_hand_labels'][folded] == ['一对[Q]']
+    assert state['history'][-1]['public_hand_labels'][folded] == ['一对[Q]']
 
 
 def test_deal_restart_keeps_cards_and_resumes_with_full_action_time(monkeypatch, tmp_path):

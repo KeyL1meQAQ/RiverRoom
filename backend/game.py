@@ -618,6 +618,7 @@ def public_hand(hand, viewer, include_hint=False):
         shown_cards={pid: shown_indices(hand, pid) for pid in hand['dealt'] if shown_indices(hand, pid)},
         reveal_until=reveal_deadline(hand), deal=hand.get('deal'),
         showdown_results=hand.get('showdown_results', []),
+        public_hand_labels=hands.public_labels(hand),
         **({'own_hand_labels': hands.own_labels(hand, viewer)} if include_hint else {}),
         result=hand['result'], awards=hand['awards'], votes=hand['votes'], voters=hand.get('voters', []),
         runouts=hand['runouts'], seq=hand['action_seq'], clock=hand['clock'], last_actions=hand['last_actions'])
