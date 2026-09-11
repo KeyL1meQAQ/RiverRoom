@@ -4,6 +4,40 @@ Host: `160.202.237.14`
 
 Initial release: `20260909T081802Z` (2026-09-09).
 
+## Release 20260911T054221Z
+
+- Application source: `09a6b763ffe7b5cd3bdc75ba92abbb992d3a2b9f` on `main`,
+  pushed before deployment. Includes the accumulated player-frame/showdown updates
+  and compact mobile action capsules without chip icons; desktop icons remain.
+- Release directory: `/opt/poker/releases/20260911T054221Z`.
+- Previous release: `/opt/poker/releases/20260909T081802Z`.
+- Rollback image: `river-room-app:rollback-20260911T054221Z`; original image ID:
+  `sha256:3966d17c75277327b0ef050604f7688023dfb02e56786ae28510fa91d4897305`.
+- Database backup: `/opt/poker/shared/backups/poker-20260911T054221Z.dump`
+  (8,897 bytes); `pg_dump` succeeded and `pg_restore --list` validated the archive
+  before activation. Existing environment, database volume, Nginx and TLS retained.
+- Build log: `/opt/poker/shared/build-20260911T054221Z.log` (`BUILD_EXIT=0`).
+  The uploaded allowlist archive passed SHA-256 verification before extraction.
+- Local verification: 71 backend tests, production build and 10 presentation
+  browser tests passed. Production room browser tests passed all 3 cases; a
+  temporary wrapper added unique room names and owner-API cleanup while retaining
+  the original test assertions. Fresh desktop/mobile captures were inspected.
+- Public HTTP and HTTPS health checks passed; both served JS and CSS bytes matched
+  the local production build. Final direct browser checks passed WS/WSS connection,
+  reload preserving identity and HttpOnly cookies; HTTPS also set Secure.
+- Initial direct/proxy access was intermittent. The room regression and asset
+  comparison used an SSH SOCKS connection to production Nginx. Subsequent direct
+  HTTP/HTTPS health and browser smoke checks passed after connectivity recovered.
+  Early cleanup-wrapper failures were corrected without application changes.
+- Application/database health, single-process operation, `unless-stopped` restart
+  policies and private bindings were checked. LiveKit `/` and `/app/` returned the
+  same content as before deployment. This run's test rooms were closed through
+  room APIs; no existing user rooms were modified by test cleanup.
+- Mobile evidence uses Chromium viewport simulation, not a physical handset.
+  HTTPS still uses the existing self-signed certificate.
+
+## Service topology
+
 - HTTP: `http://160.202.237.14:8080`
 - HTTPS: `https://160.202.237.14:8443`
 - Current release: `/opt/poker/current`
