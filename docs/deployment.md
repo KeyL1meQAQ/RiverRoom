@@ -4,6 +4,38 @@ Host: `160.202.237.14`
 
 Initial release: `20260909T081802Z` (2026-09-09).
 
+## Release 20260911T091243Z
+
+- Application source: `fa3debc902f8613623c498969ebb90dddf2abbd4` on `main`,
+  pushed before deployment. Before the first game starts, occupied seats display
+  two pale frosted placeholders with the River Room spade mark. In-game card
+  behavior is unchanged.
+- Release directory: `/opt/poker/releases/20260911T091243Z`.
+  Previous release: `/opt/poker/releases/20260911T075231Z`.
+- Rollback image: `river-room-app:rollback-20260911T091243Z`; original image ID:
+  `sha256:226481ec22288016d7089ff898b51710e7d865ea75b81ea87cef895bbb97e652`.
+- Database backup: `/opt/poker/shared/backups/poker-20260911T091243Z.dump`
+  (36,724 bytes, mode 600), validated with `pg_restore --list` before activation.
+  Build log: `/opt/poker/shared/build-20260911T091243Z.log`; build succeeded.
+  The allowlist archive passed SHA-256 verification before extraction.
+- Local verification: 71 backend tests, 10 presentation tests, production build,
+  and placeholder state checks passed. Desktop/mobile screenshots were inspected.
+- All 3 existing room browser tests passed against public HTTP using uniquely
+  named rooms and owner-API cleanup. Added production checks verified 18 spade
+  marks at a full waiting table and removal of placeholders after starting.
+  Fresh nine-seat desktop/mobile captures were inspected.
+- HTTP and HTTPS smoke checks passed health, byte-for-byte HTML/JS/CSS comparison,
+  WS/WSS connection, refresh preserving identity, frosted placeholders, mobile
+  layout and desktop empty-seat symmetry. Cookies were HttpOnly on both protocols
+  and Secure on HTTPS. All four test rooms created by this run were closed.
+- App/database health, single app process, restart policies and private bindings
+  passed. LiveKit `/` and `/app/` hashes matched their pre-deployment baselines.
+  Database, environment, Nginx and TLS configuration were retained.
+- `/opt/poker/current` was updated after verification. Backup, rollback image and
+  build log were retained; the uploaded transfer archive was removed.
+- Mobile evidence uses Chromium viewport simulation, not a physical phone.
+  HTTPS retains the existing self-signed certificate.
+
 ## Release 20260911T075231Z
 
 - Application source: `86bd61d5d1242d7261c031b53de7db6a4fd8247a` on `main`,
