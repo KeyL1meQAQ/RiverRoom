@@ -3234,16 +3234,15 @@ dialog::backdrop {
   .table-stage .seat .seat-hand-label small { font-size: 9px; margin-right: 2px; }
   .table-stage .seat-bet {
     width: max-content;
-    min-width: 46px;
+    min-width: 0;
     max-width: 102px;
     height: 22px;
-    padding: 2px 6px;
-    gap: 4px;
+    padding: 2px 4px;
+    gap: 0;
   }
   .table-stage .seat-bet .bet-amount { font-size: 12px; line-height: 16px; }
   .table-stage .seat-bet .bet-action { font-size: 10px; line-height: 16px; }
-  .bet-chip { width: 11px; height: 11px; flex-basis: 11px; }
-  .bet-chip::after { inset: 1px; }
+  .table-stage .seat-bet .bet-chip { display: none; }
   .table-stage.showing-result.double-board { min-height: 590px; }
   .table-stage .position-0 { top: auto; bottom: 12px; transform: translateX(-50%); }
 }
@@ -3385,17 +3384,6 @@ dialog::backdrop {
   .table-stage:not(.showing-result) .position-6 { top: 31.5%; }
   .table-stage .position-1 .dealer,
   .table-stage .position-8 .dealer { top: calc(100% + 5px); left: calc(50% - 9.5px); right: auto; }
-  .table-stage:not(:has(.large-bet)) .position-1 .seat-bet,
-  .table-stage:not(:has(.large-bet)) .position-8 .seat-bet {
-    min-width: 46px;
-    max-width: 46px;
-    padding: 2px;
-    gap: 2px;
-  }
-  .table-stage:not(:has(.large-bet)) .position-1 .bet-chip,
-  .table-stage:not(:has(.large-bet)) .position-8 .bet-chip { width: 9px; height: 9px; flex-basis: 9px; }
-  .table-stage:not(:has(.large-bet)) .position-1 .bet-amount,
-  .table-stage:not(:has(.large-bet)) .position-8 .bet-amount { font-size: min(12px, calc(52px / var(--amount-length, 1))); }
   .table-stage:has(.seat-bet.large-bet) { min-height: 800px; max-height: none; }
   .table-stage:has(.large-bet) .seat-bet {
     max-width: min(102px, calc((100vw - 196px) / 2));
