@@ -2,7 +2,7 @@
 from collections import deque
 import secrets
 
-from pokerkit import Automation, Card, Deck, Mode, NoLimitTexasHoldem
+from pokerkit import Automation, Card, Deck, Folding, Mode, NoLimitTexasHoldem
 
 AUTOMATIONS = (Automation.ANTE_POSTING, Automation.BLIND_OR_STRADDLE_POSTING, Automation.BET_COLLECTION)
 
@@ -24,6 +24,12 @@ def state_for(hand):
     for name, args in hand['ops']:
         perform(state, name, args)
     return state
+
+
+def folded_players(hand, state=None):
+    # Final statuses also include hands killed at showdown; only actual folds count.
+    state = state if state is not None else state_for(hand)
+    return [hand['ids'][op.player_index] for op in state.operations if isinstance(op, Folding)]
 
 
 def perform(state, name, args):

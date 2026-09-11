@@ -46,6 +46,7 @@ def test_check_showdown_reveals_prefix_through_final_winner(monkeypatch):
     assert hand['reveal_until'] == hand['finished_at'] + 5
     for viewer in [observer, *ids]:
         state = game.view(room, viewer, 1002)
+        assert not any(p['folded'] for p in state['players'])
         for pid in ids[:3]:
             assert state['hand']['cards'][pid] == hand['dealt'][pid]
             assert state['history'][-1]['cards'][pid] == hand['dealt'][pid]
@@ -116,6 +117,42 @@ def test_fold_win_and_folded_single_card_reveal(monkeypatch):
     assert folded in room['hand']['revealed']
     assert game.public_hand(room['hand'], observer)['cards'][folded] == room['hand']['dealt'][folded]
     assert [p['stack'] for p in room['players'].values()] == balances
+
+
+@pytest.mark.parametrize('timeout', [False, True])
+def test_fold_persists_after_settlement_and_restart_until_next_deal(monkeypatch, tmp_path, timeout):
+    from backend.store import Store
+
+    room, ids, observer = fixed_table(monkeypatch, [('Ac', 'Ad'), ('Kc', 'Kd'), ('Qc', 'Qd')])
+    folded = room['hand']['clock']['pid']
+    room['paused'] = True
+    if timeout:
+        game.tick(room, room['hand']['clock']['until'] + 1)
+    else:
+        action(room, 'fold')
+    assert next(p for p in game.view(room, observer, 1002)['players'] if p['id'] == folded)['folded']
+    finish(room)
+    assert room['hand']['folded'] == [folded]
+    # Exercise an older persisted hand with no dedicated fold record.
+    for hand in [room['hand'], room['history'][0]]:
+        hand.pop('folded')
+    store = Store(f'sqlite:///{tmp_path}/folded.db')
+    store.save(room)
+    restored = Service(store).rooms[room['id']]
+    after = restored['hand']['reveal_until'] + 1
+    for viewer in [folded, observer, ids[0]]:
+        visible = game.view(restored, viewer, after)
+        assert [p['id'] for p in visible['players'] if p['folded']] == [folded]
+        assert next(p for p in visible['players'] if p['id'] == folded)['cards'] == (
+            room['hand']['dealt'][folded] if viewer == folded else [])
+    assert restored['history'][0]['folded'] == [folded]
+    assert not game.migrate_reveals(restored)
+    for p in restored['players'].values():
+        p['online'] = True
+    game.command(restored, restored['owner'], {'type': 'resume'}, after)
+    game.tick(restored, after + 10)
+    assert restored['number'] == 2
+    assert not any(p['folded'] for p in game.view(restored, observer, after + 10)['players'])
 
 
 @pytest.mark.parametrize('cards', [None, [], [2], [-1], [True], [0, 0], [0, 1, 0], ['0']])

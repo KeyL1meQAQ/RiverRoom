@@ -53,15 +53,20 @@ test("folded player reveals one card then all, visible to observer, window expir
     await expect(controls).toBeVisible();
     expect((await state(2)).hand!.cards).toEqual({});
     await controls.getByRole("button", { name: `亮出 ${cards[1]}`, exact: true }).click();
-    await expect(observer.locator(".hole-cards .playing-card:not(.back)")).toHaveCount(1);
-    await expect(observer.locator(".hole-cards .back")).toHaveCount(1);
+    await expect(observer.locator(".hole-cards .playing-card:not(.back):not(.hole-card-outline)")).toHaveCount(1);
+    await expect(observer.getByRole('img', { name: '已弃牌，未公开底牌' })).toHaveCount(1);
+    await expect(observer.locator(".hole-cards .back")).toHaveCount(0);
+    await expect(host.locator('.hole-cards.folded')).toHaveCSS('filter', 'brightness(0.55)');
+    await expect(observer.locator('.hole-cards.folded')).toHaveCount(0);
     const partial = await state(2);
     expect(partial.hand!.cards[me]).toEqual([null, cards[1]]);
     expect(partial.history[0].cards[me]).toEqual([null, cards[1]]);
-    await host.screenshot({ path: "artifacts/showdown-mobile.png", fullPage: true });
-    await observer.screenshot({ path: "artifacts/showdown-observer.png", fullPage: true });
+    await host.screenshot({ path: "artifacts/folded-cards-20260911-partial-own-mobile.png", fullPage: true });
+    await observer.screenshot({ path: "artifacts/folded-cards-20260911-partial-observer-desktop.png", fullPage: true });
     await controls.getByRole("button", { name: "亮出全部", exact: true }).click();
     await expect(observer.locator(".hole-cards .playing-card:not(.back)")).toHaveCount(2);
+    await expect(observer.getByRole('img', { name: '已弃牌，未公开底牌' })).toHaveCount(0);
+    await expect(host.locator('.hole-cards.folded')).toHaveCSS('filter', 'brightness(0.55)');
     expect((await state(2)).hand!.cards[me]).toEqual(cards);
     await expect(controls.getByRole("button", { name: "亮出全部", exact: true })).toBeDisabled();
     expect(await host.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
@@ -72,6 +77,48 @@ test("folded player reveals one card then all, visible to observer, window expir
     await observer.locator(".history-toggle").click();
     await expect(observer.locator(".history-player .playing-card:not(.back)")).toHaveCount(2);
     await command(0, { type: "end" });
+  } finally {
+    for (const context of contexts) await context.close();
+  }
+});
+
+test('folded cards persist through refresh and paused waiting, then reset on the next deal', async ({ browser, baseURL }) => {
+  const { contexts, pages, state, command } = await roomWithPlayers(browser, baseURL!, 2);
+  try {
+    const [host, opponent, observer] = pages;
+    await command(0, { type: 'start' });
+    await command(0, { type: 'pause' });
+    await host.getByRole('button', { name: '弃牌', exact: true }).click();
+    await expect(host.locator('.hole-cards.folded .playing-card')).toHaveCount(2);
+    await expect(host.locator('.hole-cards.folded')).toHaveCSS('filter', 'brightness(0.55)');
+    for (const page of [opponent, observer]) {
+      await expect(page.getByRole('img', { name: '已弃牌，未公开底牌' })).toHaveCount(2);
+      await expect(page.locator('.folded-card-outline .lucide-x')).toHaveCount(2);
+      await expect(page.locator('.hole-cards.folded')).toHaveCount(0);
+    }
+    await expect(host.getByRole('group', { name: '本手亮牌' })).toHaveCount(0, { timeout: 7000 });
+    await host.reload();
+    await observer.reload();
+    await expect(host.locator('.hole-cards.folded')).toHaveCSS('filter', 'brightness(0.55)');
+    await host.screenshot({ path: 'artifacts/folded-cards-20260911-own-mobile.png', fullPage: true });
+    for (const [name, width, height] of [['desktop', 1440, 960], ['mobile', 390, 844], ['compact', 320, 568]] as const) {
+      await observer.setViewportSize({ width, height });
+      await expect(observer.getByRole('img', { name: '已弃牌，未公开底牌' })).toHaveCount(2);
+      await observer.getByRole('img', { name: '已弃牌，未公开底牌' }).first().scrollIntoViewIfNeeded();
+      await expect(observer.getByRole('img', { name: '已弃牌，未公开底牌' }).first()).toBeInViewport();
+      expect(await observer.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+      await observer.screenshot({ path: `artifacts/folded-cards-20260911-observer-${name}.png`, fullPage: true });
+    }
+    expect((await state()).number).toBe(1);
+    await command(0, { type: 'resume' });
+    await expect.poll(async () => (await state()).number).toBe(2);
+    await expect(host.locator('.hole-cards.folded')).toHaveCount(0);
+    await expect(observer.getByRole('img', { name: '已弃牌，未公开底牌' })).toHaveCount(0);
+    await expect(observer.locator('.hole-cards .back')).toHaveCount(4);
+    await command(0, { type: 'end' });
+    const active = await state();
+    const actor = active.players.find(p => p.id === active.hand!.clock!.pid)!;
+    await command(actor.seat!, { type: 'act', action: 'fold', hand: active.number, seq: active.hand!.seq });
   } finally {
     for (const context of contexts) await context.close();
   }

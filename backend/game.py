@@ -278,6 +278,7 @@ def finish_hand(room, state, now):
             p['bank'] = room['settings']['timebank']
         result.append(dict(pid=pid, name=p['name'], delta=state.stacks[i] - hand['initial'][i], won=payouts[i]))
     hand['result'] = result
+    hand['folded'] = engine.folded_players(hand, state)
     hand['showdown_results'] = hands.showdown_results(hand)
     hand['finished_at'] = now
     hand['reveal_until'] = now + 5
@@ -603,6 +604,9 @@ def migrate_reveals(room):
         hand.update(reveal_version=1, shown_cards={}, reveal_until=hand['finished_at'] + 5)
         changed = True
     for hand in [room['hand'], *room['history']]:
+        if hand and hand['result'] is not None and 'folded' not in hand:
+            hand['folded'] = engine.folded_players(hand)
+            changed = True
         if hand and hand['result'] is not None and 'showdown_results' not in hand:
             hand['showdown_results'] = hands.showdown_results(hand)
             changed = True
@@ -637,6 +641,8 @@ def view(room, viewer, now):
             visible.update(stack=state.stacks[idx], bet=state.bets[idx], folded=not state.statuses[idx])
         if hand:
             visible['cards'] = visible_cards(hand, p['id'], viewer)
+            if hand['result'] is not None:
+                visible['folded'] = p['id'] in hand['folded']
         players.append(visible)
     result = {k: copy.deepcopy(room[k]) for k in ('id', 'name', 'settings', 'owner', 'phase', 'deadline',
               'button', 'small_blind', 'big_blind', 'number', 'started', 'paused', 'recovery', 'closing', 'closed_at', 'version')}

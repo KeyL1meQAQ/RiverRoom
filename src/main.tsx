@@ -633,6 +633,8 @@ function PokerTable({
         const tableAction = p && inHand && !actor ? hand.last_actions[p.id] : undefined;
         const betAmount = p && inHand && tableAction !== '弃牌' ? p.bet : 0;
         const cards = inHand || (p && hand?.ids.includes(p.id)) ? p?.cards : [];
+        const folded = !!(p?.folded && hand?.ids.includes(p.id));
+        const displayedCards = cards?.length ? cards : folded ? [null, null] : [];
         const labels = p && showingResult ? hand?.public_hand_labels?.[p.id] : undefined;
         const ownLabels = p?.id === room.me && hand?.own_hand_labels?.length && (playing || showingResult)
           ? hand.own_hand_labels.map((values, board) => values[boards[board]?.length || 0])
@@ -763,13 +765,18 @@ function PokerTable({
             )}
             {p && (
               <div
-                className={`hole-cards ${p.folded && playing ? "folded" : ""}`}
+                className={`hole-cards ${folded && p.id === room.me ? "folded" : ""}`}
                 role={!room.started ? "img" : undefined}
                 aria-label={!room.started ? "底牌区域，尚未发牌" : undefined}
               >
-                {cards?.length ? (
-                  cards.map((c, i) =>
-                    p.id === room.me && hand?.result && now < hand.reveal_until ? (
+                {displayedCards.length ? (
+                  displayedCards.map((c, i) =>
+                    c === null && folded ? (
+                      <span key={i} className="playing-card small hole-card-outline folded-card-outline"
+                        role="img" aria-label="已弃牌，未公开底牌">
+                        <X className="hole-card-mark" aria-hidden="true" />
+                      </span>
+                    ) : p.id === room.me && hand?.result && now < hand.reveal_until ? (
                       <button
                         key={i}
                         className="reveal-card"
@@ -799,9 +806,6 @@ function PokerTable({
                   </>
                 ) : null}
               </div>
-            )}
-            {p?.folded && playing && !cards?.length && (
-              <span className="folded-cards" aria-hidden="true"><X size={42} /></span>
             )}
           </div>
         );

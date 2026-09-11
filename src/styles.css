@@ -1000,10 +1000,7 @@ b {
   opacity: 0.6;
 }
 .hole-cards.folded {
-  opacity: 0.4;
-}
-.folded-cards {
-  display: none;
+  filter: brightness(0.55);
 }
 .position-0 .hole-cards,
 .position-1 .hole-cards,
@@ -2627,18 +2624,6 @@ dialog::backdrop {
     transform: none;
     gap: 0;
     z-index: 3;
-  }
-  .folded-cards {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: calc(100% - var(--seat-width) + var(--card-overlap));
-    height: var(--hole-height);
-    color: #8b9b91;
-    pointer-events: none;
   }
   .hole-cards > :first-child {
     transform: rotate(-6deg);

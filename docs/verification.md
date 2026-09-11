@@ -137,3 +137,11 @@
 ## 核查产物
 
 截图位于 `artifacts/`：入口页面、真实牌局、九人桌、摊牌和手机布局。业务验收目标位于 `acceptance.md`。未公开底牌、随机牌序与召回码不进入公共日志；截图中仅展示测试身份。
+
+## 弃牌底牌展示验证（2026-09-11）
+
+- `npm run build` 通过；`.venv/bin/python -m pytest backend/tests -q` 共 73 项通过，覆盖手动/超时弃牌、结算后保留、旧存档迁移、重启恢复、下一手清除，以及摊牌落败者不误标为弃牌。
+- `tests/presentation.spec.ts` 10 项与 `tests/showdown.spec.ts` 3 项浏览器测试通过。前者使用固定牌局快照检查九席布局和本人成牌更新；后者连接独立 SQLite 测试后端，验证实际弃牌、单张/全部亮牌、其他玩家和观战者视角、刷新、暂停等待和下一手发牌。
+- 本地 Vite 来源校验配置补齐后，真实房间测试通过；最后一项窄屏滚动截图复验改为直接访问后端提供的构建产物，命令为 `BASE_URL=http://127.0.0.1:8000 npm run test:e2e -- tests/showdown.spec.ts -g 'persist through refresh'`，1 项通过。
+- 查看本轮 `folded-cards-20260911-own-mobile.png`、`folded-cards-20260911-partial-observer-desktop.png`、`folded-cards-20260911-observer-desktop.png`、`folded-cards-20260911-observer-mobile.png` 和 `folded-cards-20260911-observer-compact.png`：本人牌面调暗且可读，其他视角公开牌为正常亮度，未公开牌为磨砂 ×；320px 窄屏沿用纵向滚动访问底部座位。
+- 本次验证在本地测试环境完成，未执行服务器部署。

@@ -75,7 +75,7 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
           const position = Number(badge.parentElement!.className.match(/position-(\d)/)![1]);
           const cards = badge.parentElement!.querySelector('.hole-cards')!.getBoundingClientRect();
           const cornerSeat = innerWidth > 760 && [1, 3, 6, 8].includes(position);
-          // Folded seats retain the same card slot even after their cards disappear.
+          // Folded seats retain the same card slot with frosted placeholders.
           const cardBottom = cards.top + parseFloat(getComputedStyle(badge.parentElement!).getPropertyValue('--hole-height'));
           const inward = cornerSeat
             ? [6, 8].includes(position)
@@ -283,8 +283,11 @@ test("both runouts highlight all main-pot winners while side-pot winners only sh
 
 test("folded personal hand keeps updating while spectators receive no hint", async ({ page }) => {
   const push = await mount(page, "folded_before");
+  await expect(page.locator('.hole-cards.folded .playing-card')).toHaveCount(2);
+  await expect(page.locator('.hole-cards.folded')).toHaveCSS('filter', 'brightness(0.55)');
   await expect(page.getByLabel("本人成牌")).toHaveText("一对[Q]");
   push("folded_after");
+  await expect(page.locator('.hole-cards.folded')).toHaveCSS('filter', 'brightness(0.55)');
   await expect(page.getByLabel("本人成牌")).toHaveText("三条[Q]");
   push("tie_observer");
   await expect(page.getByLabel("本人成牌")).toHaveCount(0);
