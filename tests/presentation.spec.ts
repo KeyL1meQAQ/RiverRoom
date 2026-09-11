@@ -36,7 +36,7 @@ async function mount(page: Page, name: string | Room) {
 test('table actions and full street amounts fit nine seats at desktop and mobile sizes', async ({ page }) => {
   const push = await mount(page, 'table_actions');
   const labels = page.locator('.seat-bet .bet-action');
-  await expect(labels).toHaveText(['过牌', '过牌', '下注', '跟注', '加注', '弃牌', '全下', '全下']);
+  await expect(labels).toHaveText(['过牌', '过牌', '弃牌']);
   await expect(page.locator('.seat-top, .seat-stack-row').filter({ hasText: /^(过牌|下注|跟注|加注|全下|弃牌)$/ })).toHaveCount(0);
   const initial = structuredClone(fixtures.table_actions);
   const huge = structuredClone(initial);
@@ -52,7 +52,7 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
     await expect(page.locator('.side-panel')).not.toBeInViewport();
     for (const large of [false, true]) {
       const snapshot = structuredClone(large ? huge : initial);
-      if (width > 760) {
+      {
         snapshot.hand!.clock = null;
         snapshot.hand!.last_actions[snapshot.me] = '跟注';
         snapshot.players.find(player => player.id === snapshot.me)!.bet = large ? 123456789 : 20;
@@ -60,35 +60,45 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
       push(snapshot);
       if (large) await expect(page.locator('.bet-amount').first()).toHaveText('123,456,789');
       else await expect(page.locator('.bet-amount').first()).not.toHaveText('123,456,789');
-      await page.screenshot({ path: `artifacts/table-actions-${name}${large ? '-large' : ''}.png`, fullPage: true });
+      await page.screenshot({ path: `artifacts/mobile-frame-actions-${name}${large ? '-large' : ''}.png`, fullPage: true });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
       const issues = await page.evaluate(() => {
         const badges = [...document.querySelectorAll('.seat-bet')];
-        const blockers = [...document.querySelectorAll('.occupied, .seat-name, .stack, .seat-payout, .hole-cards, .boards, .seat-hand-label, .table-status, .pot-label')];
+        const blockers = [...document.querySelectorAll('.occupied, .seat-name, .stack, .seat-payout, .hole-cards, .boards, .seat-hand-label, .table-status, .pot-label, .dealer')];
         const intersects = (a: DOMRect, b: DOMRect) =>
           Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1 &&
           Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1;
         return badges.flatMap((badge, index) => {
           const rect = badge.getBoundingClientRect();
           const seat = badge.parentElement!.querySelector('.occupied')!.getBoundingClientRect();
-          const overlap = Math.min(
-            Math.min(rect.right, seat.right) - Math.max(rect.left, seat.left),
-            Math.min(rect.bottom, seat.bottom) - Math.max(rect.top, seat.top),
-          );
+          const gap = Math.max(seat.left - rect.right, rect.left - seat.right, seat.top - rect.bottom, rect.top - seat.bottom);
+          const position = Number(badge.parentElement!.className.match(/position-(\d)/)![1]);
+          const cards = badge.parentElement!.querySelector('.hole-cards')!.getBoundingClientRect();
+          const cornerSeat = innerWidth > 760 && [1, 3, 6, 8].includes(position);
+          // Folded seats retain the same card slot even after their cards disappear.
+          const cardBottom = cards.top + parseFloat(getComputedStyle(badge.parentElement!).getPropertyValue('--hole-height'));
+          const inward = cornerSeat
+            ? [6, 8].includes(position)
+              ? Math.abs(rect.right - (cards.left - 8)) <= 1 &&
+                (position === 8 ? Math.abs(rect.bottom - (cards.top - 8)) <= 1 : rect.top >= cardBottom + 7)
+              : rect.left >= seat.right + 7 && (position === 1 ? rect.bottom <= seat.top - 7 : rect.top >= seat.bottom + 7)
+            : [4, 5].includes(position) ? rect.top >= seat.bottom
+            : position === 0 ? rect.bottom <= Math.min(seat.top, cards.top)
+            : position < 4 ? rect.left >= seat.right : rect.right <= seat.left;
+
+          const mobileSide = innerWidth <= 760 && [1, 2, 3, 6, 7, 8].includes(position);
+          const mobileAnchor = !mobileSide || ([1, 8].includes(position)
+            ? Math.abs(rect.bottom - (seat.top - 6)) <= 1
+            : [3, 6].includes(position) ? Math.abs(rect.top - (seat.bottom + 6)) <= 1
+            : Math.abs((rect.top + rect.bottom) / 2 - (seat.top + seat.bottom) / 2) <= 1);
+          const peerPosition = ({ 1: 8, 8: 1, 2: 7, 7: 2, 3: 6, 6: 3 } as Record<number, number>)[position];
+          const peer = cornerSeat ? document.querySelector(`.position-${peerPosition} .seat-bet`) : null;
+          const aligned = !peer || Math.abs(rect.top - peer.getBoundingClientRect().top) <= 1;
           const collisions = [...blockers, ...badges.slice(index + 1)].filter(other => {
             const otherRect = other.getBoundingClientRect();
-            if (other.matches('.occupied') && other.parentElement === badge.parentElement) {
-              if (innerWidth > 760 || overlap <= 4.5) return false;
-            }
-            if (other.matches('.hole-cards') && other.parentElement === badge.parentElement) {
-              const horizontal = Math.min(rect.right, otherRect.right) - Math.max(rect.left, otherRect.left);
-              const vertical = Math.min(rect.bottom, otherRect.bottom) - Math.max(rect.top, otherRect.top);
-              const allowed = innerWidth > 760 ? 8.5 : 4.5;
-              if (horizontal <= allowed || vertical <= allowed) return false;
-            }
             return otherRect.width && otherRect.height && intersects(rect, otherRect);
           });
-          const textOverflow = [...badge.children].some(child => {
+          const textOverflow = [...badge.children].filter(child => child.textContent).some(child => {
             const text = document.createRange();
             text.selectNodeContents(child);
             const bounds = text.getBoundingClientRect();
@@ -97,19 +107,20 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
           return [
             ...collisions.map(other => `${badge.parentElement!.className}: ${badge.textContent} overlaps ${other.className}`),
             ...(textOverflow ? [`${badge.textContent} text overflow`] : []),
-            ...(innerWidth > 760 && Math.abs(overlap - 8) > 1
-              ? [`${badge.parentElement!.className} overlap is ${overlap}px`] : []),
-            ...(innerWidth <= 760 && !['position-0', 'position-1', 'position-8'].some(name => badge.parentElement!.classList.contains(name)) && Math.abs(overlap - 4) > 1
-              ? [`${badge.parentElement!.className} mobile overlap is ${overlap}px`] : []),
+            ...(!inward ? [`${badge.parentElement!.className} is not on the inward side`] : []),
+            ...(!mobileAnchor ? [`${badge.parentElement!.className} does not follow its frame corner or middle line`] : []),
+            ...(!aligned ? [`${badge.parentElement!.className} is not level with position-${peerPosition}`] : []),
+            ...(gap < (innerWidth > 760 ? 7 : 5)
+              ? [`${badge.parentElement!.className} gap is only ${gap}px`] : []),
             ...(innerWidth > 760 && badge.children.length === 2 &&
-              Math.abs(badge.children[0].getBoundingClientRect().top - badge.children[1].getBoundingClientRect().top) > 1
+              Math.abs((badge.children[0].getBoundingClientRect().top + badge.children[0].getBoundingClientRect().bottom) / 2 - (badge.children[1].getBoundingClientRect().top + badge.children[1].getBoundingClientRect().bottom) / 2) > 1
               ? [`${badge.textContent} is not on one line`] : []),
           ];
         });
       });
       expect.soft(issues, `${name}, large=${large}`).toEqual([]);
       if (!large) {
-        await expect(page.locator('.bet-amount').first()).toHaveCSS('font-size', width <= 760 ? '16px' : '18px');
+        await expect(page.locator('.bet-amount').first()).toHaveCSS('font-size', width <= 760 ? '12px' : '14px');
       }
       if (width > 760) {
         const ownHint = await page.locator('.own-hand-label').boundingBox();
@@ -134,7 +145,7 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
   const ownAction = structuredClone(initial);
   ownAction.me = ownAction.players.find(player => ownAction.hand!.last_actions[player.id] === '加注')!.id;
   push(ownAction);
-  await expect(page.locator('.position-0 .seat-bet')).toHaveText('加注100');
+  await expect(page.locator('.position-0 .seat-bet')).toHaveText('100');
   const ownBadge = await page.locator('.position-0 .seat-bet').boundingBox();
   const ownCards = await page.locator('.position-0 .hole-cards').boundingBox();
   expect(ownBadge!.y + ownBadge!.height).toBeLessThan(ownCards!.y);
@@ -334,23 +345,20 @@ test('nine-player double runout and ordinary play fit with readable cards and se
           const frame = wrap.querySelector('.seat.occupied')!.getBoundingClientRect();
           const cards = wrap.querySelector('.hole-cards')?.getBoundingClientRect();
           const label = wrap.querySelector('.seat-hand-label')?.getBoundingClientRect();
+          if (label) {
+            if (label.left < frame.left - 1 || label.right > frame.right + 1 || label.top < frame.top || label.bottom > frame.bottom) issues.push(`${wrap.className} hand label leaves frame`);
+            for (const content of wrap.querySelectorAll('.seat-top, .stack, .seat-payout')) {
+              if (overlaps(label, content.getBoundingClientRect())) issues.push(`${wrap.className} hand label overlaps ${content.className}`);
+            }
+          }
           if (cards?.width) {
             if (innerWidth > 760) {
               const cardOverlap = cards.right - frame.left;
               if (Math.abs(cardOverlap - 8) > 1) issues.push(`${wrap.className} card overlap is ${cardOverlap}px`);
-              if (label && label.top < cards.bottom - 1) issues.push(`${wrap.className} hand label is not below cards`);
             } else {
               const cardOverlap = cards.bottom - frame.top;
               if (Math.abs(cardOverlap - 4) > 1) issues.push(`${wrap.className} mobile card overlap is ${cardOverlap}px`);
               if (label?.left < 0 || label?.right > innerWidth) issues.push(`${wrap.className} hand label leaves viewport`);
-              if (label && wrap.classList.contains('own-seat') && label.top < frame.bottom + 2) {
-                issues.push('own hand label is not below frame');
-              }
-              if (label && !wrap.classList.contains('own-seat')) {
-                const labelOverlap = Math.min(label.bottom, frame.bottom) - Math.max(label.top, frame.top);
-                if (labelOverlap < 3 || labelOverlap > 7) issues.push(`${wrap.className} public label overlap is ${labelOverlap}px`);
-                if (Math.abs(label.right - frame.right - 2) > 1) issues.push(`${wrap.className} public label is not right aligned`);
-              }
             }
           }
         }
@@ -359,7 +367,7 @@ test('nine-player double runout and ordinary play fit with readable cards and se
           if (overlaps(hint.getBoundingClientRect(), text.getBoundingClientRect())) issues.push(`own hint overlaps ${text.className}`);
         }
         if (document.documentElement.scrollWidth > innerWidth) issues.push('horizontal overflow');
-        if (innerWidth <= 760 && innerHeight >= 740) {
+        if (innerWidth <= 760 && innerHeight >= 740 && !document.querySelector('.showing-result.double-board')) {
           const main = document.querySelector('.room-main')!;
           if (main.scrollHeight > main.clientHeight + 1) issues.push('table needs scrolling');
           const footer = document.querySelector('.action-bar')!.getBoundingClientRect();
@@ -370,7 +378,7 @@ test('nine-player double runout and ordinary play fit with readable cards and se
         return issues;
       });
       expect.soft(issues, `${name} ${fixture}`).toEqual([]);
-      await page.screenshot({ path: `artifacts/mobile-layout-${fixture}-${name}.png`, fullPage: true });
+      await page.screenshot({ path: `artifacts/mobile-frame-${fixture}-${name}.png`, fullPage: true });
       if (width > 340 && width <= 760) {
         const card = await page.locator('.position-4 .hole-cards .playing-card').first().boundingBox();
         expect(card!.width).toBeGreaterThanOrEqual(28);
@@ -426,4 +434,90 @@ test('mobile approval shortcut counts actionable requests and opens management',
   await page.getByRole('button', { name: '待审批 1 项', exact: true }).click();
   await expect(page.locator('.side-panel')).toBeInViewport();
   await expect(page.getByRole('button', { name: `批准 ${state.requests[0].name}`, exact: true })).toBeVisible();
+});
+
+test('player frames keep names, progress and complete winnings readable through crowded states', async ({ page }) => {
+  const initial = structuredClone(fixtures.table_actions);
+  initial.players.forEach((player, index) => { player.name = `长昵称玩家${index}二十个字符需要省略展示`; });
+  initial.players.find(player => player.id === initial.me)!.online = false;
+  initial.players.find(player => player.id === initial.me)!.leave = true;
+  const push = await mount(page, initial);
+  for (const [width, height] of [[1440, 960], [1366, 768], [1024, 800], [800, 800], [761, 800], [390, 844], [360, 740], [320, 568]]) {
+    await page.setViewportSize({ width, height });
+    push(initial);
+    await expect(page.locator('.seat-timer, .seat-bank')).toHaveCount(0);
+    const name = page.locator('.own-seat .seat-name');
+    const before = await name.boundingBox();
+    expect(before!.width, `${width} nickname remains readable with owner, offline and leaving status`).toBeGreaterThanOrEqual(24);
+    await expect(page.locator('.turn-track')).toHaveCount(1);
+    const bank = structuredClone(initial);
+    bank.hand!.clock!.base_until = bank.server_time - 1;
+    bank.hand!.clock!.until = bank.server_time + 9;
+    bank.hand!.clock!.initial = 10;
+    push(bank);
+    await expect(page.locator('.turn-progress')).toHaveClass(/bank/);
+    expect(await name.boundingBox()).toEqual(before);
+    for (let dealer = 0; dealer < 9; dealer++) {
+      const dealerState = structuredClone(bank);
+      dealerState.button = dealer;
+      push(dealerState);
+      await expect(page.locator(`.position-${dealer} .dealer`)).toHaveCount(1);
+      const dealerIssues = await page.evaluate(() => {
+        const marker = document.querySelector('.dealer')!.getBoundingClientRect();
+        return [...document.querySelectorAll('.seat-name, .seat-state, .seat-owner, .offline-icon, .stack, .seat-payout, .seat-hand-label, .hole-cards, .seat-bet, .boards')].filter(item => {
+          const rect = item.getBoundingClientRect();
+          return Math.min(rect.right, marker.right) - Math.max(rect.left, marker.left) > 1 && Math.min(rect.bottom, marker.bottom) - Math.max(rect.top, marker.top) > 1;
+        }).map(item => item.className);
+      });
+      expect.soft(dealerIssues, `${width} dealer at ${dealer}`).toEqual([]);
+    }
+    const nextStreet = structuredClone(bank);
+    nextStreet.players.forEach(player => { player.bet = 0; });
+    nextStreet.hand!.last_actions = {};
+    push(nextStreet);
+    await expect(page.locator('.seat-state.all-in')).toHaveCount(2);
+    const result = structuredClone(fixtures.nine_twice);
+    result.players.forEach(player => { player.name = initial.players.find(p => p.id === player.id)?.name || '很长的玩家昵称'; player.stack = 123456789; });
+    result.hand!.result!.forEach(row => { if (row.won) row.won = 987654321; });
+    push(result);
+    await expect(page.locator('.turn-track')).toHaveCount(0);
+    await expect(page.locator('.seat-payout').first()).toHaveText('+987,654,321');
+    await expect(page.locator('.seat-hand-label > span')).toHaveCount(18);
+    const issues = await page.evaluate(() => {
+      const intersects = (a: DOMRect, b: DOMRect) => Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1 && Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1;
+      const issues: string[] = [];
+      const frames = [...document.querySelectorAll('.seat.occupied')];
+      for (const [i, seat] of frames.entries()) {
+        const frame = seat.getBoundingClientRect();
+        const name = seat.querySelector('.seat-name')!;
+        if (name.getBoundingClientRect().width < 24) issues.push('nickname has less than two characters of space');
+        const elements = [...seat.querySelectorAll('.seat-name, .seat-state, .seat-owner, .offline-icon, .stack, .seat-payout, .seat-hand-label')];
+        for (const [j, element] of elements.entries()) {
+          const rect = element.getBoundingClientRect();
+          if (elements.slice(j + 1).some(other => intersects(rect, other.getBoundingClientRect()))) issues.push(`${element.className} overlaps another item`);
+          if (rect.left < frame.left || rect.right > frame.right || rect.bottom > frame.bottom) issues.push(`${element.className} leaves frame`);
+          if (element.matches('.stack, .seat-payout, .seat-hand-label')) {
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            for (const text of range.getClientRects()) {
+              if (text.left < frame.left || text.right > frame.right || text.bottom > frame.bottom) issues.push(`${element.className} text clipped`);
+            }
+          }
+        }
+        for (const other of frames.slice(i + 1)) if (intersects(frame, other.getBoundingClientRect())) issues.push('player frames overlap');
+        for (const cards of document.querySelectorAll('.hole-cards')) {
+          if (cards.parentElement === seat.parentElement) continue;
+          if (intersects(frame, cards.getBoundingClientRect())) issues.push(`${seat.parentElement!.className} overlaps ${cards.parentElement!.className} cards`);
+        }
+        if (intersects(frame, document.querySelector('.boards')!.getBoundingClientRect())) issues.push('frame overlaps board');
+      }
+      if (document.documentElement.scrollWidth > innerWidth) issues.push('horizontal overflow');
+      return issues;
+    });
+    expect.soft(issues, `${width} crowded results`).toEqual([]);
+    await page.locator('.own-seat .seat-hand-label').scrollIntoViewIfNeeded();
+    await expect(page.locator('.own-seat .seat-hand-label')).toBeInViewport();
+    await expect(page.locator('.action-bar')).toBeInViewport();
+    await page.screenshot({ path: `artifacts/player-polish-crowded-${width}.png`, fullPage: true });
+  }
 });

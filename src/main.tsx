@@ -46,6 +46,13 @@ const defaults: Config = {
 const n = (v: number) =>
   v.toLocaleString("zh-CN", { maximumFractionDigits: 0 });
 const signed = (v: number) => `${v > 0 ? "+" : ""}${n(v)}`;
+// Keep every digit readable when a narrow seat needs more than one amount line.
+function seatAmount(value: number) {
+  const parts = n(value).split(",");
+  return parts.map((part, index) =>
+    <React.Fragment key={index}>{index > 0 && <wbr />}{part}{index < parts.length - 1 ? "," : ""}</React.Fragment>,
+  );
+}
 const commandId = () =>
   Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
     b.toString(16).padStart(2, "0"),
@@ -622,6 +629,7 @@ function PokerTable({
             )
           : 0;
         const inHand = p && playing && hand.ids.includes(p.id);
+        const allIn = p && inHand && !p.folded && p.stack === 0;
         const tableAction = p && inHand && !actor ? hand.last_actions[p.id] : undefined;
         const betAmount = p && inHand && tableAction !== '弃牌' ? p.bet : 0;
         const cards = inHand || (p && hand?.ids.includes(p.id)) ? p?.cards : [];
@@ -657,7 +665,7 @@ function PokerTable({
         return (
           <div
             key={seat}
-            className={`seat-wrap position-${position} ${p?.id === room.me ? "own-seat" : ""} ${displayedLabels.length || payout ? "has-result" : ""}`}
+            className={`seat-wrap position-${position} ${p?.id === room.me ? "own-seat" : ""} ${displayedLabels.length || payout ? "has-result" : ""} ${displayedLabels.length > 1 ? "double-result" : ""} ${p && (n(p.stack).length > 7 || n(payout).length > 6) ? "large-amounts" : ""}`}
             style={
               {
                 "--x": `${x}%`,
@@ -674,18 +682,17 @@ function PokerTable({
                 aria-label={`${p.name}，筹码 ${p.stack}`}
               >
                 <div className="seat-top">
-                  <span className="seat-name">
-                    {p.id === room.owner && <Crown size={11} />}
+                  {p.id === room.owner && <Crown size={11} className="seat-owner" aria-label="房主" />}
+                  <span className="seat-name" title={p.name}>
                     {p.name}
                   </span>
-                  {!p.online && <WifiOff size={12} className="offline-icon" />}
-                  {compactStatus && compactStatus !== "你" && <span className="seat-state">{compactStatus}</span>}
-                  {actor ? <span className="seat-timer">{bankMode ? "BANK " : ""}{seconds}s</span>
-                    : p.id === room.me && <span className="seat-bank">BANK {Math.ceil(p.bank)}s</span>}
+                  {!p.online && <WifiOff size={11} className="offline-icon" aria-label="离线" />}
+                  {allIn ? <span className="seat-state all-in" title={status}>全下</span>
+                    : compactStatus && compactStatus !== "你" && compactStatus !== "离线" && <span className="seat-state" title={status}>{compactStatus}</span>}
                 </div>
                 <div className="seat-stack-row">
-                  <strong className="stack" title={n(p.stack)}>
-                    <span className="stack-full">{n(p.stack)}</span>
+                  <strong className={`stack ${n(p.stack).length > 5 ? "long-stack" : ""}`} title={n(p.stack)}>
+                    <span className="stack-full">{seatAmount(p.stack)}</span>
                     <span
                       className="stack-mobile"
                       style={{ fontSize: n(p.stack).length > 3 ? 11 : undefined }}
@@ -700,15 +707,25 @@ function PokerTable({
                   </strong>
                   {payout > 0 && <strong className="seat-payout"
                     style={{ '--amount-length': n(payout).length } as React.CSSProperties}
-                    aria-label={`获胜 ${n(payout)}`}>+{n(payout)}</strong>}
+                    aria-label={`获胜 ${n(payout)}`}>+{seatAmount(payout)}</strong>}
                 </div>
+                {displayedLabels.length > 0 && <div
+                  className={`seat-hand-label ${p.id === room.me ? "own-hand-label" : "public-hand-label"}`}
+                  aria-label={p.id === room.me ? "本人成牌" : `${p.name}的摊牌牌型`}>
+                  {displayedLabels.map((label, board) => {
+                    const boardWinner = mainGroups.some(group => group.board === board && group.winners.some(w => w.pid === p.id));
+                    return <span className={boardWinner ? "won-main" : ""} key={board} data-board={board}
+                      title={`${displayedLabels.length > 1 ? `第 ${board + 1} 次：` : ""}${label}`}>
+                      {displayedLabels.length > 1 && <small>{board === 0 ? "①" : "②"}</small>}{label}
+                    </span>;
+                  })}
+                </div>}
                 {actor && (
-                  <div
-                    className={`turn-progress ${bankMode ? "bank" : ""}`}
-                    style={{
-                      width: `${Math.max(0, (seconds / (bankMode ? Math.max(1, hand!.clock!.initial) : 20)) * 100)}%`,
-                    }}
-                  />
+                  <div className="turn-track" role="progressbar" aria-label={bankMode ? "额外思考时间" : "行动剩余时间"}
+                    aria-valuemin={0} aria-valuemax={bankMode ? Math.max(1, hand!.clock!.initial) : 20} aria-valuenow={seconds}>
+                    <div className={`turn-progress ${bankMode ? "bank" : ""}`}
+                      style={{ width: `${Math.min(100, Math.max(0, (seconds / (bankMode ? Math.max(1, hand!.clock!.initial) : 20)) * 100))}%` }} />
+                  </div>
                 )}
               </button>
             ) : (
@@ -733,13 +750,14 @@ function PokerTable({
               </span>
             )}
             {p && (betAmount > 0 || tableAction) && (
-              <div className={`seat-bet ${betAmount > 0 ? 'with-amount' : 'action-only'}`}
+              <div className={`seat-bet ${betAmount > 0 ? 'with-amount' : 'action-only'} ${tableAction === '弃牌' ? 'fold-action' : ''} ${n(betAmount).length > 5 ? 'large-bet' : ''}`}
                 aria-label={`${p.name} ${tableAction || '下注'}${betAmount > 0 ? ` ${n(betAmount)}` : ''}`}
                 title={betAmount > 0 ? `${tableAction || '下注'} ${n(betAmount)}` : tableAction}>
-                {tableAction && <span className="bet-action">{tableAction}</span>}
+                {betAmount > 0 ? <span className="bet-chip" aria-hidden="true" />
+                  : tableAction && <span className="bet-action">{tableAction}</span>}
                 {betAmount > 0 && <strong className="bet-amount"
                   style={{ '--amount-length': n(betAmount).length } as React.CSSProperties}>
-                  {n(betAmount)}
+                  {seatAmount(betAmount)}
                 </strong>}
               </div>
             )}
@@ -774,17 +792,6 @@ function PokerTable({
             {p?.folded && playing && !cards?.length && (
               <span className="folded-cards" aria-hidden="true"><X size={42} /></span>
             )}
-            {p && displayedLabels.length > 0 && <div
-              className={`seat-hand-label ${p.id === room.me ? "own-hand-label" : "public-hand-label"}`}
-              aria-label={p.id === room.me ? "本人成牌" : `${p.name}的摊牌牌型`}>
-              {displayedLabels.map((label, board) => {
-                const boardWinner = mainGroups.some(group => group.board === board && group.winners.some(w => w.pid === p.id));
-                return <span className={boardWinner ? "won-main" : ""} key={board} data-board={board}
-                  title={`${displayedLabels.length > 1 ? `第 ${board + 1} 次：` : ""}${label}`}>
-                  {displayedLabels.length > 1 && <small>{board + 1}</small>}{label}
-                </span>;
-              })}
-            </div>}
           </div>
         );
       })}

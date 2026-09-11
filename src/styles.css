@@ -3093,3 +3093,339 @@ dialog::backdrop {
   .table-stage .seat-bet { width: 64px; gap: 2px; }
   .table-stage .seat-bet .bet-amount { font-size: min(16px, calc(54px / var(--amount-length, 1))); }
 }
+
+/* Player information stays in flow; only cards and action capsules sit outside. */
+.table-stage .seat.occupied {
+  height: auto;
+  min-height: var(--seat-height, 48px);
+  padding-bottom: 7px;
+}
+.table-stage .seat-top { gap: 3px; flex-shrink: 0; }
+.table-stage .seat-name { display: block; flex: 1; line-height: 18px; text-align: left; }
+.seat-owner { flex-shrink: 0; color: #ab8d3e; }
+.table-stage .seat-state { font-size: 8px; max-width: 32px; line-height: 14px; }
+.table-stage .seat-state.all-in {
+  color: #93631d;
+  font-weight: 800;
+  overflow: visible;
+}
+.table-stage .seat-stack-row { height: auto; min-height: 22px; align-items: center; gap: 4px; }
+.table-stage .seat-stack-row .stack {
+  height: auto;
+  min-width: 0;
+  line-height: 22px;
+  overflow: visible;
+  white-space: normal;
+}
+.table-stage .seat-stack-row .long-stack { font-size: 13px; line-height: 18px; }
+.table-stage .seat-payout {
+  min-width: 0;
+  max-width: 58%;
+  flex-shrink: 0;
+  padding: 2px 5px;
+  border-radius: 12px;
+  background: #dceede;
+  border: 1px solid #c4dec8;
+  color: #27633d;
+  font-size: 11px;
+  line-height: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: normal;
+}
+.table-stage .seat .seat-hand-label {
+  position: static;
+  inset: auto;
+  transform: none;
+  width: calc(100% + 16px);
+  max-width: none;
+  margin: 4px -8px -3px;
+  padding: 4px 8px 2px;
+  border: 0;
+  border-top: 1px solid #dbe5d9;
+  border-radius: 0;
+  background: #eaf0e6;
+  box-shadow: none;
+  color: #43604b;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: left;
+  align-items: stretch;
+  text-shadow: none;
+  gap: 0;
+}
+.table-stage .seat .seat-hand-label > span {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
+.table-stage .seat .seat-hand-label small { font-size: 10px; margin-right: 3px; }
+.table-stage .seat .seat-hand-label .won-main { color: #816020; }
+.turn-track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: #d4dfce;
+  overflow: hidden;
+}
+.turn-track .turn-progress { height: 100%; }
+.table-stage .seat-bet {
+  width: max-content;
+  min-width: 58px;
+  max-width: min(120px, var(--seat-width, 120px));
+  height: 25px;
+  padding: 3px 9px;
+  gap: 5px;
+  border-radius: 999px;
+  border-color: #769d88;
+  box-shadow: 0 2px 4px #10291d20;
+}
+.table-stage .seat-bet .bet-amount { font-size: min(14px, calc(144px / var(--amount-length, 1))); line-height: 18px; }
+.table-stage .seat-bet .bet-action { font-size: 11px; line-height: 18px; }
+.bet-chip {
+  position: relative;
+  display: block;
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  border-radius: 50%;
+  border: 2px dashed #eedba4;
+  background: #ad8c42;
+}
+.bet-chip::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border: 1px solid #eedba4;
+  border-radius: 50%;
+}
+.table-stage .seat-bet.fold-action { background: #294d3f; border-color: #6b8c78; }
+.table-stage .fold-action .bet-action { color: #bbcdbf; font-weight: 500; }
+@media (min-width: 761px) {
+  .table-stage .position-0 .seat-bet,
+  .table-stage .position-1 .seat-bet,
+  .table-stage .position-8 .seat-bet { top: calc(var(--seat-top) - 17px); }
+  .table-stage .seat-wrap:has(.seat-hand-label) .seat-bet { top: calc(var(--seat-top) - 17px); }
+  .table-stage .has-result .seat.occupied { min-height: 68px; }
+}
+@media (max-width: 760px) {
+  .table-stage .seat-wrap { height: auto; }
+  .table-stage .seat.occupied { padding: 4px 5px 7px; min-height: 48px; }
+  .table-stage .own-seat .seat.occupied { min-height: 52px; }
+  .table-stage .seat-top { gap: 2px; }
+  .table-stage .seat-owner, .table-stage .offline-icon { width: 9px; height: 9px; }
+  .table-stage .seat-state { font-size: 7px; max-width: 23px; }
+  .table-stage .seat-stack-row .long-stack { font-size: 11px; line-height: 15px; }
+  .table-stage .seat-payout { font-size: 10px; line-height: 13px; padding: 1px 3px; }
+  .table-stage .seat .seat-hand-label {
+    width: calc(100% + 10px);
+    margin: 3px -5px -3px;
+    padding: 3px 5px 2px;
+    font-size: 9px;
+    line-height: 14px;
+  }
+  .table-stage .seat .seat-hand-label small { font-size: 9px; margin-right: 2px; }
+  .table-stage .seat-bet {
+    width: max-content;
+    min-width: 46px;
+    max-width: 102px;
+    height: 22px;
+    padding: 2px 6px;
+    gap: 4px;
+  }
+  .table-stage .seat-bet .bet-amount { font-size: 12px; line-height: 16px; }
+  .table-stage .seat-bet .bet-action { font-size: 10px; line-height: 16px; }
+  .bet-chip { width: 11px; height: 11px; flex-basis: 11px; }
+  .bet-chip::after { inset: 1px; }
+  .table-stage.showing-result.double-board { min-height: 590px; }
+  .table-stage .position-0 { top: auto; bottom: 12px; transform: translateX(-50%); }
+}
+
+@media (min-width: 761px) and (max-width: 1100px) {
+  .table-stage .seat-bet { padding: 3px 4px; gap: 3px; }
+  .table-stage .seat-bet .bet-amount { font-size: min(14px, calc(132px / var(--amount-length, 1))); }
+  .table-stage .bet-chip { width: 11px; height: 11px; flex-basis: 11px; }
+}
+@media (max-width: 380px) {
+  .table-stage .position-3,
+  .table-stage .position-6 { top: calc(var(--my) + 8px); }
+}
+@media (min-width: 761px) {
+  .table-stage:has(.seat-wrap.large-amounts) { min-height: 800px; max-height: none; }
+  .table-stage:has(.seat-wrap.large-amounts) .table-center { top: 45%; }
+  .table-stage:has(.seat-wrap.large-amounts) .position-4,
+  .table-stage:has(.seat-wrap.large-amounts) .position-5 { top: 6%; }
+  .table-stage .dealer {
+    top: calc(var(--hole-height) + 6px);
+    left: calc((100% - var(--seat-width) + var(--card-overlap)) / 2 - 11px);
+    right: auto;
+  }
+}
+@media (max-width: 760px) {
+  .table-stage:has(.seat-wrap.large-amounts) { min-height: 800px; max-height: none; }
+  .table-stage:has(.seat-wrap.large-amounts) .position-1,
+  .table-stage:has(.seat-wrap.large-amounts) .position-8 { top: 76%; }
+  .table-stage:has(.seat-wrap.large-amounts) .position-2,
+  .table-stage:has(.seat-wrap.large-amounts) .position-7 { top: 55%; }
+}
+
+@media (max-width: 760px) {
+  .table-stage .dealer { top: -24px; right: -16px; }
+  .table-stage .own-seat .dealer { top: -40px; }
+  .table-stage .position-5 .dealer,
+  .table-stage .position-6 .dealer,
+  .table-stage .position-7 .dealer,
+  .table-stage .position-8 .dealer { left: -16px; right: auto; }
+}
+@media (min-width: 381px) and (max-width: 760px) {
+  .table-stage .position-1 .dealer,
+  .table-stage .position-8 .dealer { top: -4px; }
+}
+
+/* Action capsules sit on the inward side, clear of the frame and hole cards. */
+@media (min-width: 761px) {
+  .table-stage .seat-wrap .seat-bet {
+    width: max-content;
+    top: calc(var(--seat-top) + var(--seat-height) / 2) !important;
+    bottom: auto;
+    left: calc(100% + 8px);
+    right: auto;
+    transform: translateY(-50%);
+  }
+  .table-stage .position-6 .seat-bet,
+  .table-stage .position-7 .seat-bet {
+    left: 6px;
+    transform: translate(-100%, -50%);
+  }
+  .table-stage .position-4 .seat-bet,
+  .table-stage .position-5 .seat-bet {
+    top: calc(max(var(--hole-height), var(--seat-top) + var(--seat-height)) + 8px) !important;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .table-stage .position-0 .seat-bet {
+    top: -8px !important;
+    left: 50%;
+    transform: translate(-50%, -100%);
+  }
+  .table-stage .position-1 .seat-bet {
+    top: -8px !important;
+    left: calc(100% + 8px);
+    transform: translateY(-100%);
+  }
+  .table-stage .position-8 .seat-bet {
+    top: -8px !important;
+    left: 6px;
+    transform: translate(-100%, -100%);
+  }
+  .table-stage .position-3 .seat-bet {
+    top: calc(max(var(--hole-height), var(--seat-top) + var(--seat-height)) + 8px) !important;
+    left: calc(100% + 8px);
+    transform: none;
+  }
+  .table-stage .position-6 .seat-bet {
+    top: calc(max(var(--hole-height), var(--seat-top) + var(--seat-height)) + 8px) !important;
+    left: 6px;
+    transform: translateX(-100%);
+  }
+  .table-stage .position-6 .dealer {
+    top: -24px;
+    left: 14px;
+  }
+}
+@media (max-width: 760px) {
+  .table-stage .seat-wrap .seat-bet {
+    width: max-content;
+    top: 50% !important;
+    bottom: auto;
+    left: calc(100% + 6px);
+    right: auto;
+    transform: translateY(-50%);
+  }
+  .table-stage .position-6 .seat-bet,
+  .table-stage .position-7 .seat-bet,
+  .table-stage .position-8 .seat-bet {
+    left: auto;
+    right: calc(100% + 6px);
+  }
+  .table-stage .position-4 .seat-bet,
+  .table-stage .position-5 .seat-bet {
+    top: calc(100% + 6px) !important;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+  .table-stage .position-1 .seat-bet,
+  .table-stage .position-8 .seat-bet {
+    top: -6px !important;
+    transform: translateY(-100%);
+  }
+  .table-stage .position-3 .seat-bet,
+  .table-stage .position-6 .seat-bet {
+    top: calc(100% + 6px) !important;
+    transform: none;
+  }
+  .table-stage .position-0 .seat-bet {
+    top: -58px !important;
+    left: 50%;
+    right: auto;
+    transform: translate(-50%, -100%);
+  }
+}
+@media (max-width: 760px) {
+  .table-stage:not(.showing-result) .table-center { top: 50%; }
+  .table-stage:not(.showing-result) .position-3,
+  .table-stage:not(.showing-result) .position-6 { top: 31.5%; }
+  .table-stage .position-1 .dealer,
+  .table-stage .position-8 .dealer { top: calc(100% + 5px); left: calc(50% - 9.5px); right: auto; }
+  .table-stage:not(:has(.large-bet)) .position-1 .seat-bet,
+  .table-stage:not(:has(.large-bet)) .position-8 .seat-bet {
+    min-width: 46px;
+    max-width: 46px;
+    padding: 2px;
+    gap: 2px;
+  }
+  .table-stage:not(:has(.large-bet)) .position-1 .bet-chip,
+  .table-stage:not(:has(.large-bet)) .position-8 .bet-chip { width: 9px; height: 9px; flex-basis: 9px; }
+  .table-stage:not(:has(.large-bet)) .position-1 .bet-amount,
+  .table-stage:not(:has(.large-bet)) .position-8 .bet-amount { font-size: min(12px, calc(52px / var(--amount-length, 1))); }
+  .table-stage:has(.seat-bet.large-bet) { min-height: 800px; max-height: none; }
+  .table-stage:has(.large-bet) .seat-bet {
+    max-width: min(102px, calc((100vw - 196px) / 2));
+    height: auto;
+    min-height: 22px;
+  }
+  .table-stage:has(.large-bet) .seat-bet .bet-amount { white-space: normal; font-size: 12px; line-height: 15px; }
+}
+@media (min-width: 761px) and (max-width: 900px) {
+  .table-stage .table-center { top: 41.5%; }
+  .table-stage .position-2 .seat-bet,
+  .table-stage .position-7 .seat-bet {
+    top: calc(var(--seat-top) + var(--seat-height) / 2 + 18px) !important;
+  }
+}
+
+/* Wrapping is reserved for unusually long mobile side amounts. */
+.table-stage .seat-bet .bet-amount { white-space: nowrap; }
+.table-stage .seat-bet wbr { display: none; }
+@media (max-width: 760px) {
+  .table-stage:has(.large-bet) .seat-bet .bet-amount { white-space: normal; }
+  .table-stage:has(.large-bet) .seat-bet wbr { display: inline; }
+  .table-stage:has(.large-bet) .position-0 .seat-bet { max-width: 102px; }
+  .table-stage:has(.large-bet) .position-0 .bet-amount { white-space: nowrap; }
+  .table-stage:has(.large-bet) .position-0 .seat-bet wbr { display: none; }
+  .table-stage .position-3 .dealer,
+  .table-stage .position-6 .dealer { top: calc(100% + 5px); left: calc(50% - 9.5px); right: auto; }
+  .table-stage .position-2 .dealer,
+  .table-stage .position-7 .dealer { top: -60px; left: calc(50% - 9.5px); right: auto; }
+}
+@media (max-width: 340px) {
+  .table-stage:not(.showing-result) { min-height: 640px; }
+}
