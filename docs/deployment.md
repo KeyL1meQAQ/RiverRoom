@@ -4,6 +4,38 @@ Host: `160.202.237.14`
 
 Initial release: `20260909T081802Z` (2026-09-09).
 
+## Release 20260911T075231Z
+
+- Application source: `86bd61d5d1242d7261c031b53de7db6a4fd8247a` on `main`,
+  pushed before deployment. Desktop empty seats are centered on mirrored anchors;
+  mobile tables use a centered 400px maximum width and an elliptical outline.
+  Mobile table branding and status text below the community cards are restored.
+- Release directory: `/opt/poker/releases/20260911T075231Z`.
+  Previous release: `/opt/poker/releases/20260911T054221Z`.
+- Rollback image: `river-room-app:rollback-20260911T075231Z`; original image ID:
+  `sha256:0bb33fe01b5f3d0faf523cd7857062dbd01a74a4c4044ed38cf489f11d00e9b6`.
+- Database backup: `/opt/poker/shared/backups/poker-20260911T075231Z.dump`
+  (29,168 bytes), validated with `pg_restore --list` before activation.
+  Build log: `/opt/poker/shared/build-20260911T075231Z.log`; build succeeded.
+  The allowlist archive passed SHA-256 verification before extraction.
+- Local verification: 71 backend tests and production build passed. All 10
+  presentation tests passed with expanded wide-phone viewport coverage; separate
+  geometry checks covered desktop symmetry, mobile width/shape and visible labels.
+- All 3 existing room browser tests passed directly against public HTTP, with
+  unique room names and owner-API cleanup. Fresh full-table mobile and desktop
+  captures were inspected. Both HTTP and HTTPS smoke tests passed room creation,
+  WS/WSS connection, reload preserving identity, 400px mobile width, oval shape,
+  visible branding/status and desktop empty-seat symmetry. Each smoke room closed.
+- Public HTML, JS and CSS matched the local build byte-for-byte. HttpOnly cookies
+  were verified on both protocols; HTTPS also set Secure. App/database health,
+  restart policies, single-process operation and private port bindings passed.
+  LiveKit `/` and `/app/` content hashes matched their pre-deployment baselines.
+- Existing database, environment, Nginx and TLS configuration were retained.
+  `/opt/poker/current` was updated after verification. Database backup and rollback
+  image were retained; this run's uploaded transfer archive was removed.
+- Mobile screenshots use Chromium viewport simulation, not a physical phone.
+  HTTPS retains the existing self-signed certificate.
+
 ## Release 20260911T054221Z
 
 - Application source: `09a6b763ffe7b5cd3bdc75ba92abbb992d3a2b9f` on `main`,
