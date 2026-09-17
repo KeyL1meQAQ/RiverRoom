@@ -2,7 +2,7 @@ import copy
 import secrets
 import time
 
-from . import engine, hands
+from . import achievements, engine, hands
 
 MAX_INTEGER = 9_007_199_254_740_991
 DEFAULTS = dict(sb=1, bb=2, timebank=10, refill=20, straddle=False, twice=False)
@@ -54,7 +54,7 @@ def add_player(room, browser, now):
     p = dict(id=pid, browser=browser, code=secrets.token_hex(8).upper(), name='观战者', seat=None,
              stack=0, buyin=0, buyout=0, profit=0, away=False, offline=now, online=False,
              bank=room['settings']['timebank'], hands=0, first_seat=True, leave=False,
-             banned=False, seen=[], last_seen=now)
+             banned=False, seen=[], last_seen=now, achievements=dict(wins=0, busts=0))
     room['players'][pid] = p
     return p
 
@@ -67,6 +67,7 @@ def create_room(name, config, browser, now=None):
                 small_blind=None, big_blind=None, number=0, started=False, paused=False,
                 recovery=False, resume_phase=None, closing=False, closed_at=None,
                 empty_since=now, created=now, version=0)
+    achievements.initialize(room)
     owner = add_player(room, browser, now)
     room['owner'] = owner['id']
     log(room, '房间已创建', now, 'room')
@@ -251,6 +252,8 @@ def progress_hand(room, state, now):
 
 def finish_hand(room, state, now):
     hand = room['hand']
+    if hand['result'] is not None:
+        return
     hand['last_actions'].clear()
     require(sum(state.stacks) == sum(hand['initial']), '牌局筹码不守恒')
     payouts = [0] * len(hand['ids'])
@@ -282,6 +285,7 @@ def finish_hand(room, state, now):
     hand['showdown_results'] = hands.showdown_results(hand)
     hand['finished_at'] = now
     hand['reveal_until'] = now + 5
+    achievements.record(room, hand)
     room['history'].append(copy.deepcopy(hand))
     for p in room['players'].values():
         if p['leave']:
@@ -634,8 +638,9 @@ def view(room, viewer, now):
     players = []
     for p in room['players'].values():
         visible = {k: p[k] for k in ('id', 'name', 'seat', 'stack', 'buyin', 'buyout', 'profit', 'away',
-                                     'online', 'offline', 'bank', 'hands', 'leave', 'banned')}
+                                     'online', 'offline', 'bank', 'hands', 'leave', 'banned', 'achievements')}
         visible.update(bet=0, folded=False, cards=[], holding=p['stack'])
+        visible['achievements'] = p['achievements'].copy()
         if state and p['id'] in hand['ids']:
             idx = hand['ids'].index(p['id'])
             visible.update(stack=state.stacks[idx], bet=state.bets[idx], folded=not state.statuses[idx])
@@ -646,7 +651,8 @@ def view(room, viewer, now):
         players.append(visible)
     result = {k: copy.deepcopy(room[k]) for k in ('id', 'name', 'settings', 'owner', 'phase', 'deadline',
               'button', 'small_blind', 'big_blind', 'number', 'started', 'paused', 'recovery', 'closing', 'closed_at', 'version')}
-    result.update(me=viewer, players=players, hand=public_hand(hand, viewer, include_hint=True), server_time=now,
+    result.update(me=viewer, players=players, achievement_since=room['achievement_since'].copy(),
+        hand=public_hand(hand, viewer, include_hint=True), server_time=now,
         requests=[r for r in room['requests'] if viewer == room['owner'] or r['pid'] == viewer],
         logs=room['logs'][-500:], ledger=room['ledger'], history=[public_hand(h, viewer) for h in room['history'][-100:]],
         rebuy=rebuy_pending(room), straddle=room['straddle_offer']['pid'] if room['straddle_offer'] else None,

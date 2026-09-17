@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import type { Config, Hand, Player, PotResult, Room } from "./types";
 import { useBoardPresentation, useSoundPreference } from "./presentation";
+import { AchievementBadges, AchievementDetails } from "./Achievements";
 import "./styles.css";
 
 const defaults: Config = {
@@ -782,6 +783,7 @@ function PokerTable({
                 <span>空位 {seat + 1}</span>
               </button>
             )}
+            {p && <AchievementBadges player={p} />}
             {p && room.button === seat && (
               <span className="dealer" title="按钮位">
                 D
@@ -2056,6 +2058,7 @@ function RoomScreen({
               </b>
             </span>
           </div>
+          <AchievementDetails player={target} since={room.achievement_since} />
           {target.id === me.id && me.seat !== null && <div className="modal-actions personal-actions">
             <button className="secondary" disabled={busy || !!room.closed_at || (me.away && me.stack === 0)}
               onClick={() => send({ type: "away", value: !me.away }, true)}>

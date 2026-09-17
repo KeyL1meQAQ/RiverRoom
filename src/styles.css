@@ -3456,3 +3456,57 @@ dialog::backdrop {
 @media (max-width: 340px) {
   .table-stage:not(.showing-result) { min-height: 640px; }
 }
+
+/* Counts are engraved into each badge, sharing the icon's silhouette. */
+.achievement-badges {
+  position: absolute;
+  top: calc(var(--seat-top, 0px) - 14px);
+  right: -1px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 18px;
+  filter: drop-shadow(0 1px 1px #20362940);
+  pointer-events: none;
+}
+.achievement-badge { position: relative; display: block; width: 19px; height: 18px; flex: 0 0 auto; }
+.achievement-badge svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.achievement-badge .badge-outline { stroke-width: 1.1; stroke-linejoin: round; }
+.achievement-badge.wins .badge-outline { fill: #f3d887; stroke: #997322; }
+.achievement-badge.busts .badge-outline { fill: #f3c7c0; stroke: #aa5046; }
+.achievement-badge .badge-detail { fill: none; stroke: #aa5046; stroke-width: 1.4; stroke-linecap: round; }
+.achievement-badge .badge-count {
+  font: 800 10px/1 ui-sans-serif, system-ui, sans-serif;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  fill: #59400f;
+  stroke: none;
+}
+.achievement-badge.busts .badge-count { fill: #792b25; }
+.achievement-badge .badge-count.capped { font-size: 8px; letter-spacing: -.5px; }
+.achievement-details { margin: 16px 0; text-align: left; }
+.achievement-detail { border: 1px solid #e4dfcb; background: #fbf7eb; border-radius: 10px; padding: 10px 12px; }
+.achievement-detail + .achievement-detail { margin-top: 8px; border-color: #e9d5d1; background: #fcf3f1; }
+.achievement-detail > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: #836022; }
+.achievement-detail.busts > div { color: #a0443b; }
+.achievement-detail strong { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.achievement-detail p { margin: 5px 0 0; font-size: 12px; line-height: 1.6; color: #657063; }
+.achievement-detail small { display: block; margin-top: 5px; font-size: 11px; color: #8b6455; }
+.achievement-scope { margin: 9px 0 0; color: #73806f; font-size: 11px; }
+@media (max-width: 760px) {
+  .achievement-badges { top: -11px; right: -1px; height: 14px; gap: 2px; }
+  .achievement-badge { width: 14px; height: 14px; }
+  .seat-wrap:has(.achievement-badges) .hole-cards { left: calc(50% - 4px); }
+  .seat-wrap:has(.achievement-badge + .achievement-badge) .hole-cards { translate: 0 -15px; }
+  .own-seat:has(.achievement-badge + .achievement-badge) .hole-cards { left: calc(50% - 14px); translate: none; }
+  .table-stage:has(.achievement-badge + .achievement-badge):not(:has(.large-amounts)) .position-1,
+  .table-stage:has(.achievement-badge + .achievement-badge):not(:has(.large-amounts)) .position-8 { top: 85%; }
+  .table-stage.showing-result:has(.achievement-badges):not(:has(.large-amounts)) { min-height: 640px; max-height: none; }
+  .table-stage.showing-result.double-board:has(.achievement-badges):not(:has(.large-amounts)) { min-height: 680px; max-height: none; }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .table-stage.showing-result:has(.achievement-badges) { min-height: 800px; max-height: none; }
+  .table-stage.showing-result:has(.achievement-badges) .position-4,
+  .table-stage.showing-result:has(.achievement-badges) .position-5 { top: 6%; }
+}

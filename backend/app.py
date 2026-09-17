@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import game
+from . import achievements, game
 from .store import Store
 
 logger = logging.getLogger('river')
@@ -42,6 +42,7 @@ class Service:
         for room in self.rooms.values():
             old = room['version']
             migrated = game.migrate_reveals(room)
+            migrated = achievements.migrate(room) or migrated
             if room['closed_at']:
                 if migrated:
                     room['version'] += 1

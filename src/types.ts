@@ -20,6 +20,7 @@ export type Player = {
   offline: number;
   bank: number;
   hands: number;
+  achievements: { wins: number; busts: number };
   leave: boolean;
   banned: boolean;
   bet: number;
@@ -97,6 +98,7 @@ export type Room = {
   version: number;
   me: string;
   players: Player[];
+  achievement_since: { wins: number; busts: number };
   hand: Hand | null;
   server_time: number;
   requests: JoinRequest[];
