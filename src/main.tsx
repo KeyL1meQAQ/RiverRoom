@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
@@ -57,6 +57,44 @@ const commandId = () =>
   Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
     b.toString(16).padStart(2, "0"),
   ).join("");
+
+function SeatAmounts({ stack, payout }: { stack: number; payout: number }) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const row = rowRef.current!;
+    const amount = row.querySelector<HTMLElement>('.stack')!;
+    const award = row.querySelector<HTMLElement>('.seat-payout');
+    const fit = () => {
+      const mobile = window.matchMedia('(max-width: 760px)').matches;
+      const size = mobile ? 12 : 14;
+      const minimum = mobile ? 11 : 12;
+      amount.style.fontSize = `${size}px`;
+      if (award) award.style.fontSize = mobile ? '10px' : '11px';
+      const width = row.clientWidth;
+      const natural = amount.getBoundingClientRect().width;
+      const awardWidth = award?.getBoundingClientRect().width || 0;
+      if (width <= 0 || natural <= 0) return;
+      // Reduce the stack first; flex-wrap moves an intact payout to its own line.
+      const available = width - (award ? awardWidth + 4 : 0);
+      const fitted = Math.min(size, Math.max(minimum, size * available / natural));
+      amount.style.fontSize = `${Math.min(fitted, size * width / natural)}px`;
+      if (award && awardWidth > width) {
+        const style = getComputedStyle(award);
+        const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + 2;
+        award.style.fontSize = `${(mobile ? 10 : 11) * (width - padding) / (awardWidth - padding)}px`;
+      }
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(row);
+    window.addEventListener('resize', fit);
+    return () => { observer.disconnect(); window.removeEventListener('resize', fit); };
+  }, [stack, payout]);
+  return <div className="seat-stack-row" ref={rowRef}>
+    <strong className="stack" title={n(stack)}><span className="stack-full">{n(stack)}</span></strong>
+    {payout > 0 && <strong className="seat-payout" aria-label={`获胜 ${n(payout)}`}>+{n(payout)}</strong>}
+  </div>;
+}
 const phases: Record<string, string> = {
   waiting: "等待开局",
   straddle: "UTG 选择中",
@@ -284,12 +322,16 @@ function Card({
   back,
   small = false,
   winning = false,
+  dimmed = false,
+  animateWin = false,
   animate = false,
 }: {
   code?: string | null;
   back?: boolean;
   small?: boolean;
   winning?: boolean;
+  dimmed?: boolean;
+  animateWin?: boolean;
   animate?: boolean;
 }) {
   const suits: Record<string, string> = { s: "♠", h: "♥", d: "♦", c: "♣" };
@@ -297,7 +339,7 @@ function Card({
   const suit = code?.[1] || "s";
   return (
     <span
-      className={`playing-card ${small ? "small" : ""} ${back ? "back" : ""} ${!code && !back ? "placeholder" : ""} ${suit === "h" || suit === "d" ? "red" : ""} ${winning ? "winning-card" : ""} ${animate ? "card-dealt" : ""}`}
+      className={`playing-card ${small ? "small" : ""} ${back ? "back" : ""} ${!code && !back ? "placeholder" : ""} ${suit === "h" || suit === "d" ? "red" : ""} ${winning ? `winning-card ${animateWin ? "winning-card-enter" : ""}` : ""} ${dimmed && code ? "dimmed-card" : ""} ${animate && !winning ? "card-dealt" : ""}`}
       data-winning={winning || undefined}
       aria-label={back ? "未公开底牌" : code || "未发公共牌"}
     >
@@ -533,8 +575,17 @@ function PokerTable({
   const hand = room.hand;
   const showingResult = !!(hand?.result && now < hand.reveal_until);
   const { boards, animated } = useBoardPresentation(hand, now, connection, sound);
-  const groups = showingResult ? hand?.showdown_results || [] : [];
+  const groups = hand?.result ? hand.showdown_results || [] : [];
   const mainGroups = groups.filter(group => group.pot === 0);
+  // A settled hand loaded on entry/reconnection gets its final pose immediately.
+  const resultBaseline = useRef({ connection, number: hand?.number, settled: !!hand?.result, animateUntil: 0 });
+  if (resultBaseline.current.connection !== connection || resultBaseline.current.number !== hand?.number) {
+    resultBaseline.current = { connection, number: hand?.number, settled: !!hand?.result, animateUntil: 0 };
+  } else if (!resultBaseline.current.settled && hand?.result) {
+    resultBaseline.current.settled = true;
+    resultBaseline.current.animateUntil = now + .3;
+  }
+  const animateWin = now < resultBaseline.current.animateUntil;
   const ownSeat = (showingResult ? hand!.seats[hand!.ids.indexOf(me.id)] : undefined) ?? me.seat ?? 0;
   const playing = hand && hand.result === null;
   const countdown = Math.max(0, Math.ceil((room.deadline || 0) - now));
@@ -572,6 +623,9 @@ function PokerTable({
               {Array.from({ length: 5 }, (_, j) => (
                 <Card key={`${j}:${board[j] || "empty"}`} code={board[j]}
                   animate={animated.has(`${i}:${j}`)}
+                  animateWin={animateWin}
+                  dimmed={mainGroups.some(group => group.board === i && group.winners.length > 0) &&
+                    !mainGroups.some(group => group.board === i && group.winners.some(w => w.cards.includes(board[j])))}
                   winning={mainGroups.some(group => group.board === i && group.winners.some(w => w.cards.includes(board[j])))} />
               ))}
             </div>
@@ -692,25 +746,7 @@ function PokerTable({
                   {allIn ? <span className="seat-state all-in" title={status}>全下</span>
                     : compactStatus && compactStatus !== "你" && compactStatus !== "离线" && <span className="seat-state" title={status}>{compactStatus}</span>}
                 </div>
-                <div className="seat-stack-row">
-                  <strong className={`stack ${n(p.stack).length > 5 ? "long-stack" : ""}`} title={n(p.stack)}>
-                    <span className="stack-full">{seatAmount(p.stack)}</span>
-                    <span
-                      className="stack-mobile"
-                      style={{ fontSize: n(p.stack).length > 3 ? 11 : undefined }}
-                    >
-                      {p.stack >= 100000
-                        ? new Intl.NumberFormat("en", {
-                            notation: "compact",
-                            maximumFractionDigits: 1,
-                          }).format(p.stack)
-                        : n(p.stack)}
-                    </span>
-                  </strong>
-                  {payout > 0 && <strong className="seat-payout"
-                    style={{ '--amount-length': n(payout).length } as React.CSSProperties}
-                    aria-label={`获胜 ${n(payout)}`}>+{seatAmount(payout)}</strong>}
-                </div>
+                <SeatAmounts stack={p.stack} payout={payout} />
                 {displayedLabels.length > 0 && <div
                   className={`seat-hand-label ${p.id === room.me ? "own-hand-label" : "public-hand-label"}`}
                   aria-label={p.id === room.me ? "本人成牌" : `${p.name}的摊牌牌型`}>
@@ -785,10 +821,12 @@ function PokerTable({
                         disabled={revealing || hand.shown_cards[p.id]?.includes(i)}
                         onClick={() => reveal([i])}
                       >
-                        <Card code={c} small winning={!!c && winningHoles.has(c)} />
+                        <Card code={c} small winning={!!c && winningHoles.has(c)} animateWin={animateWin}
+                          dimmed={mainGroups.some(group => group.winners.length > 0) && !!c && !winningHoles.has(c)} />
                       </button>
                     ) : <Card key={i} code={c} back={c === null} small
-                      winning={!!c && winningHoles.has(c)} />,
+                      winning={!!c && winningHoles.has(c)} animateWin={animateWin}
+                      dimmed={mainGroups.some(group => group.winners.length > 0) && !!c && !winningHoles.has(c)} />,
                   )
                 ) : inHand && !p.folded ? (
                   <>
@@ -873,11 +911,11 @@ function RoomScreen({
     };
     const connect = () => {
       if (cancelled) return;
+      let receivedState = false;
       ws = new WebSocket(
         `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws/${rid}`,
       );
       ws.onopen = () => {
-        setConnection(value => value + 1);
         setStatus("connected");
         ping = setInterval(() => {
           if (ws?.readyState === WebSocket.OPEN) ws.send("ping");
@@ -885,7 +923,14 @@ function RoomScreen({
       };
       ws.onmessage = (e) => {
         const message = JSON.parse(e.data);
-        if (message.type === "state") accept(message.state);
+        if (message.type === "state") {
+          // Establish animation baselines with the first fresh snapshot, not stale offline state.
+          if (!receivedState) {
+            receivedState = true;
+            setConnection(value => value + 1);
+          }
+          accept(message.state);
+        }
         if (message.type === "revoked") {
           revoked = true;
           setStatus("revoked");

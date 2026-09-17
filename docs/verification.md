@@ -145,3 +145,16 @@
 - 本地 Vite 来源校验配置补齐后，真实房间测试通过；最后一项窄屏滚动截图复验改为直接访问后端提供的构建产物，命令为 `BASE_URL=http://127.0.0.1:8000 npm run test:e2e -- tests/showdown.spec.ts -g 'persist through refresh'`，1 项通过。
 - 查看本轮 `folded-cards-20260911-own-mobile.png`、`folded-cards-20260911-partial-observer-desktop.png`、`folded-cards-20260911-observer-desktop.png`、`folded-cards-20260911-observer-mobile.png` 和 `folded-cards-20260911-observer-compact.png`：本人牌面调暗且可读，其他视角公开牌为正常亮度，未公开牌为磨砂 ×；320px 窄屏沿用纵向滚动访问底部座位。
 - 本次验证在本地测试环境完成，未执行服务器部署。
+
+
+## 筹码、获胜牌与手机底牌验证（2026-09-17）
+
+- `npm run build` 通过，包含 TypeScript 检查及 Vite 生产构建；`git diff --check` 通过。
+- `BASE_URL=http://localhost:5179 npm run test:e2e`：完整 32 项通过，约 44.1 秒。使用本地 Vite、127.0.0.1:8000 Uvicorn 和独立 SQLite 文件 `/tmp/river-room-ui-commit-20260917.sqlite`，未使用生产房间。
+- 新增浏览器检查：获胜牌只播放一次上移、整牌底色、上移终态、窗口结束和刷新不重播；减少动态效果、隐藏牌不误亮、无需摊牌不调暗、本人弃牌滤镜不叠加；320/360/390/760px 两张手机底牌独立点击亮牌；320/360/390/760/761/1440px 常规金额同排，以及既有极端大额各自保持单行。
+- 既有九人桌、主边池、平分、双公共牌、复制弹窗、入座审批、刷新召回、实际弃牌与自愿亮牌流程均回归通过。
+- `.venv/bin/python -m pytest backend/tests -q`：73 项通过；仍有既有依赖弃用及固定测试牌局弃牌提示，共 2 条警告。
+- 已查看 `artifacts/ui-20260917-winning-mobile.png`、`artifacts/presentation-tie-mobile.png`、`artifacts/presentation-tie-desktop.png` 和 `artifacts/player-polish-crowded-390.png`：整牌高亮与非成牌调暗可区分，手机底牌交叠，长金额完整且胶囊整块换行。
+- 本节记录本地实现和验收，不代表线上部署。
+
+- 提交前审查补充修正：以重连后的首份状态快照建立动画基准；模拟断线期间结算后重连，确认不补播获胜动画。完成修正后重新通过上述构建和完整 32 项浏览器测试。

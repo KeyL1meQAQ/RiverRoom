@@ -26,11 +26,17 @@ async function mount(page: Page, name: string | Room) {
   });
   await page.goto("/r/presentation");
   await expect(page.locator(".connection")).toHaveClass(/connected/);
-  return (name: string | Room) => {
+  const push = (name: string | Room) => {
     state = current(typeof name === 'string' ? fixtures[name] : name);
     socket.send(JSON.stringify({ type: "state", state }));
     return state;
   };
+  return Object.assign(push, {
+    reconnectWith(name: string | Room) {
+      state = current(typeof name === 'string' ? fixtures[name] : name);
+      socket.close({ code: 1012, reason: 'test reconnect' });
+    },
+  });
 }
 
 test('table actions and full street amounts fit nine seats at desktop and mobile sizes', async ({ page }) => {
@@ -505,6 +511,9 @@ test('player frames keep names, progress and complete winnings readable through 
             for (const text of range.getClientRects()) {
               if (text.left < frame.left || text.right > frame.right || text.bottom > frame.bottom) issues.push(`${element.className} text clipped`);
             }
+            if (element.matches('.stack, .seat-payout') && range.getBoundingClientRect().height > parseFloat(getComputedStyle(element).lineHeight)) {
+              issues.push(`${element.className} amount split across lines`);
+            }
           }
         }
         for (const other of frames.slice(i + 1)) if (intersects(frame, other.getBoundingClientRect())) issues.push('player frames overlap');
@@ -522,5 +531,139 @@ test('player frames keep names, progress and complete winnings readable through 
     await expect(page.locator('.own-seat .seat-hand-label')).toBeInViewport();
     await expect(page.locator('.action-bar')).toBeInViewport();
     await page.screenshot({ path: `artifacts/player-polish-crowded-${width}.png`, fullPage: true });
+  }
+});
+
+test('settlement raises whole winning cards once and dims only visible non-winning faces', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const result = structuredClone(fixtures.side_pots);
+  const before = structuredClone(result);
+  before.hand!.result = null;
+  const push = await mount(page, before);
+  await page.evaluate(() => {
+    (window as any).winningAnimations = 0;
+    document.addEventListener('animationstart', event => {
+      if (event.animationName === 'winning-card-rise') (window as any).winningAnimations++;
+    });
+  });
+  push(result);
+  await expect.poll(() => page.evaluate(() => (window as any).winningAnimations)).toBeGreaterThan(0);
+  const winners = page.locator('.table-stage .playing-card.winning-card');
+  await expect(winners.first()).toHaveCSS('translate', '0px -8px');
+  await expect(page.locator('.hole-cards .winning-card').first()).toHaveCSS('translate', '0px -6px');
+  await expect(winners.first()).toHaveCSS('background-color', 'rgb(255, 244, 201)');
+  await expect(page.locator('.winning-card-enter')).toHaveCount(0);
+  const count = await page.evaluate(() => (window as any).winningAnimations);
+  expect(count).toBe(await winners.count());
+  const cards = await page.locator('.table-stage .playing-card').evaluateAll(nodes => nodes.map(node => ({
+    winning: node.classList.contains('winning-card'),
+    dimmed: node.classList.contains('dimmed-card'),
+    filter: getComputedStyle(node).filter,
+  })));
+  expect(cards.some(card => card.dimmed)).toBeTruthy();
+  expect(cards.every(card => card.winning ? !card.dimmed : card.dimmed && card.filter === 'brightness(0.55)')).toBeTruthy();
+  await page.screenshot({ path: 'artifacts/ui-20260917-winning-mobile.png', fullPage: true });
+  push(result);
+  const expired = structuredClone(result);
+  expired.hand!.reveal_until = expired.server_time - 1;
+  push(expired);
+  await expect(page.locator('.table-stage')).not.toHaveClass(/showing-result/);
+  await expect(winners).toHaveCount(count);
+  expect(await page.evaluate(() => (window as any).winningAnimations)).toBe(count);
+  await page.reload();
+  await expect(winners).toHaveCount(count);
+  await expect(page.locator('.winning-card-enter')).toHaveCount(0);
+  await expect(winners.first()).toHaveCSS('translate', '0px -8px');
+});
+
+test('reconnecting to a hand settled while offline does not replay winning animations', async ({ page }) => {
+  const before = structuredClone(fixtures.side_pots);
+  before.hand!.result = null;
+  const push = await mount(page, before);
+  await page.evaluate(() => {
+    (window as any).winningAnimations = 0;
+    document.addEventListener('animationstart', event => {
+      if (event.animationName === 'winning-card-rise') (window as any).winningAnimations++;
+    });
+  });
+  push.reconnectWith('side_pots');
+  await expect(page.locator('.connection')).toHaveClass(/offline/);
+  await expect(page.locator('.connection')).toHaveClass(/connected/);
+  await expect(page.locator('.boards .winning-card').first()).toHaveCSS('translate', '0px -8px');
+  await expect(page.locator('.winning-card-enter')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).winningAnimations)).toBe(0);
+});
+
+test('result dimming respects hidden cards, folded brightness, no-showdown wins and reduced motion', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const before = structuredClone(fixtures.folded_after);
+  before.hand!.result = null;
+  const push = await mount(page, before);
+  push('folded_after');
+  await expect(page.locator('.boards .winning-card').first()).toHaveCSS('animation-name', 'none');
+  await expect(page.locator('.boards .winning-card').first()).toHaveCSS('translate', '0px -8px');
+  await expect(page.locator('.hole-cards.folded')).toHaveCSS('filter', 'brightness(0.55)');
+  for (const card of await page.locator('.hole-cards.folded .playing-card').all()) await expect(card).toHaveCSS('filter', 'none');
+  const hidden = structuredClone(fixtures.side_pots);
+  const loser = hidden.players.find(player => player.seat !== null && !hidden.hand!.showdown_results!.some(group => group.pot === 0 && group.winners.some(w => w.pid === player.id)))!;
+  loser.cards = [null, null];
+  push(hidden);
+  await expect(page.locator('.hole-cards .back')).toHaveCount(2);
+  await expect(page.locator('.back.dimmed-card, .back.winning-card')).toHaveCount(0);
+  const uncontested = structuredClone(hidden);
+  uncontested.hand!.showdown_results = [];
+  push(uncontested);
+  await expect(page.locator('.winning-card, .dimmed-card')).toHaveCount(0);
+  const next = structuredClone(fixtures.preflop);
+  next.number = next.hand!.number = hidden.number + 1;
+  push(next);
+  await expect(page.locator('.winning-card, .dimmed-card')).toHaveCount(0);
+});
+
+test('mobile overlapping hole cards preserve both independent reveal targets', async ({ page }) => {
+  const commands: number[][] = [];
+  await page.route('**/api/rooms/presentation/commands', route => {
+    commands.push(route.request().postDataJSON().cards);
+    return route.fulfill({ json: { ok: true } });
+  });
+  const push = await mount(page, 'folded_after');
+  for (const width of [320, 360, 390, 760]) {
+    await page.setViewportSize({ width, height: 844 });
+    push('folded_after');
+    const pair = page.locator('.own-seat .hole-cards .reveal-card');
+    await expect(pair).toHaveCount(2);
+    const left = (await pair.nth(0).boundingBox())!;
+    const right = (await pair.nth(1).boundingBox())!;
+    expect(right.x).toBeGreaterThan(left.x);
+    expect(right.x).toBeLessThan(left.x + left.width);
+    await pair.nth(0).click();
+    await pair.nth(1).click();
+    expect(commands.slice(-2)).toEqual([[0], [1]]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  }
+  const waiting = structuredClone(fixtures.preflop);
+  waiting.started = false;
+  waiting.hand = null;
+  waiting.players.forEach(player => { player.cards = []; });
+  push(waiting);
+  await expect(page.locator('.hole-card-outline')).toHaveCount(4);
+  await expect(page.locator('.hole-card-outline').first()).not.toHaveCSS('transform', 'none');
+});
+
+test('ordinary settlement amounts share a line at mobile and desktop breakpoints', async ({ page }) => {
+  const result = structuredClone(fixtures.tie);
+  result.players.forEach(player => { player.stack = 200; });
+  result.hand!.result!.forEach(row => { row.won = 123; });
+  const push = await mount(page, result);
+  for (const width of [320, 360, 390, 760, 761, 1440]) {
+    await page.setViewportSize({ width, height: 960 });
+    push(result);
+    await expect(page.locator('.seat-payout').first()).toHaveText('+123');
+    const issues = await page.locator('.seat-stack-row').evaluateAll(rows => rows.flatMap(row => {
+      const stack = row.querySelector('.stack')!.getBoundingClientRect();
+      const payout = row.querySelector('.seat-payout')!.getBoundingClientRect();
+      return Math.abs((stack.top + stack.bottom) / 2 - (payout.top + payout.bottom) / 2) > 1 ? ['ordinary amount wrapped'] : [];
+    }));
+    expect(issues, `${width}px`).toEqual([]);
   }
 });

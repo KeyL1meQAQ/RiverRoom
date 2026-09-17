@@ -699,10 +699,20 @@ b {
 }
 .playing-card.winning-card,
 .hole-cards .playing-card.winning-card {
-  outline: 2px solid #f5d777;
-  outline-offset: 1px;
-  box-shadow: 0 0 10px #ffe79966;
+  background: #fff4c9;
+  outline: none;
+  box-shadow: inset 0 0 12px #ffe28b80, 0 0 12px #ffe79999, 0 4px 7px #11231833;
+  translate: 0 var(--win-lift, -8px);
 }
+.hole-cards { --win-lift: -6px; }
+.winning-card-enter { animation: winning-card-rise .22s ease-out; }
+@keyframes winning-card-rise {
+  from { translate: 0 0; }
+  to { translate: 0 var(--win-lift, -8px); }
+}
+.playing-card.dimmed-card { filter: brightness(.55); }
+/* A folded hand already has this filter on its container. */
+.hole-cards.folded .dimmed-card { filter: none; }
 .seat.winning-seat {
   border-color: #d6ae45;
   box-shadow: 0 0 0 2px #d6ae4566;
@@ -3005,13 +3015,17 @@ dialog::backdrop {
     left: 50%;
     right: auto;
     transform: translateX(-50%);
-    gap: 2px;
+    gap: 0;
+    --mobile-hole-width: 28px;
     z-index: 1;
   }
   .table-stage .hole-cards .playing-card { width: 28px; height: 40px; border-radius: 3px; }
   .table-stage .hole-cards .playing-card b, .table-stage .hole-cards .playing-card > span { font-size: 18px; }
   .table-stage .hole-cards .playing-card > span { margin-top: 0; }
-  .table-stage .own-seat .hole-cards { top: -52px; gap: 3px; }
+  .table-stage .hole-cards > :first-child { transform: rotate(-6deg); }
+  .table-stage .hole-cards > :last-child { transform: rotate(6deg); margin-left: calc(var(--mobile-hole-width) / -3); }
+  .table-stage .hole-cards > * { position: relative; }
+  .table-stage .own-seat .hole-cards { top: -52px; gap: 0; --mobile-hole-width: 40px; }
   .table-stage .own-seat .hole-cards .playing-card { width: 40px; height: 56px; }
   .table-stage .own-seat .hole-cards .playing-card b, .table-stage .own-seat .hole-cards .playing-card > span { font-size: 24px; }
   .table-stage .seat-hand-label {
@@ -3124,18 +3138,24 @@ dialog::backdrop {
   font-weight: 800;
   overflow: visible;
 }
-.table-stage .seat-stack-row { height: auto; min-height: 22px; align-items: center; gap: 4px; }
+.table-stage .seat-stack-row { height: auto; min-height: 22px; align-items: center; gap: 4px; flex-wrap: wrap; }
 .table-stage .seat-stack-row .stack {
   height: auto;
+  width: max-content;
+  max-width: none;
+  flex: 0 0 auto;
   min-width: 0;
-  line-height: 22px;
+  padding: 0;
+  margin: 0;
+  font-size: 14px;
+  line-height: 18px;
   overflow: visible;
-  white-space: normal;
+  white-space: nowrap;
 }
-.table-stage .seat-stack-row .long-stack { font-size: 13px; line-height: 18px; }
 .table-stage .seat-payout {
   min-width: 0;
-  max-width: 58%;
+  max-width: none;
+  margin-left: auto;
   flex-shrink: 0;
   padding: 2px 5px;
   border-radius: 12px;
@@ -3146,7 +3166,7 @@ dialog::backdrop {
   line-height: 14px;
   font-variant-numeric: tabular-nums;
   text-align: center;
-  white-space: normal;
+  white-space: nowrap;
 }
 .table-stage .seat .seat-hand-label {
   position: static;
@@ -3237,7 +3257,6 @@ dialog::backdrop {
   .table-stage .seat-top { gap: 2px; }
   .table-stage .seat-owner, .table-stage .offline-icon { width: 9px; height: 9px; }
   .table-stage .seat-state { font-size: 7px; max-width: 23px; }
-  .table-stage .seat-stack-row .long-stack { font-size: 11px; line-height: 15px; }
   .table-stage .seat-payout { font-size: 10px; line-height: 13px; padding: 1px 3px; }
   .table-stage .seat .seat-hand-label {
     width: calc(100% + 10px);
