@@ -79,10 +79,15 @@ test('nine-seat badges fit cards, player information, and action capsules at all
       push(state);
       await expect(page.locator('.achievement-badges')).toHaveCount(0);
       const frameHeights = await page.locator('.seat.occupied').evaluateAll(seats => seats.map(seat => seat.getBoundingClientRect().height));
+      const cardTopOffsets = await page.locator('.seat-wrap:has(.occupied)').evaluateAll(wraps => wraps.map(wrap =>
+        wrap.querySelector('.hole-cards')!.getBoundingClientRect().top - wrap.querySelector('.seat')!.getBoundingClientRect().top));
       state.players.forEach((p, i) => { p.achievements = { wins: i % 2 ? 99 : 100, busts: i % 2 ? 100 : 99 }; });
       push(state);
       await expect(page.locator('.achievement-badges')).toHaveCount(9);
       expect(await page.locator('.seat.occupied').evaluateAll(seats => seats.map(seat => seat.getBoundingClientRect().height))).toEqual(frameHeights);
+      expect(await page.locator('.seat-wrap:has(.occupied)').evaluateAll(wraps => wraps.map(wrap =>
+        wrap.querySelector('.hole-cards')!.getBoundingClientRect().top - wrap.querySelector('.seat')!.getBoundingClientRect().top)),
+      'badges must not lift hole cards relative to their player frame').toEqual(cardTopOffsets);
       await page.screenshot({ path: `artifacts/badges-${scenario}-${width}.png`, fullPage: true });
       const issues = await page.evaluate(() => {
         const visible = (el: Element) => el.getBoundingClientRect().width > 0 && getComputedStyle(el).visibility !== 'hidden';

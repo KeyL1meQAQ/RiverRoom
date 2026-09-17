@@ -3498,12 +3498,14 @@ dialog::backdrop {
   .achievement-badges { top: -11px; right: -1px; height: 14px; gap: 2px; }
   .achievement-badge { width: 14px; height: 14px; }
   .seat-wrap:has(.achievement-badges) .hole-cards { left: calc(50% - 4px); }
-  .seat-wrap:has(.achievement-badge + .achievement-badge) .hole-cards { translate: 0 -15px; }
-  .own-seat:has(.achievement-badge + .achievement-badge) .hole-cards { left: calc(50% - 14px); translate: none; }
-  .table-stage:has(.achievement-badge + .achievement-badge):not(:has(.large-amounts)) .position-1,
-  .table-stage:has(.achievement-badge + .achievement-badge):not(:has(.large-amounts)) .position-8 { top: 85%; }
+  .seat-wrap:has(.achievement-badge + .achievement-badge) .hole-cards { left: calc(50% - 15px); }
+  .own-seat:has(.achievement-badge + .achievement-badge) .hole-cards { left: calc(50% - 14px); }
   .table-stage.showing-result:has(.achievement-badges):not(:has(.large-amounts)) { min-height: 640px; max-height: none; }
   .table-stage.showing-result.double-board:has(.achievement-badges):not(:has(.large-amounts)) { min-height: 680px; max-height: none; }
+}
+@media (max-width: 380px) {
+  .seat-wrap:not(.own-seat):has(.achievement-badge + .achievement-badge) .hole-cards { left: calc(50% - 13px); }
+  .seat-wrap:not(.own-seat) > .achievement-badges { right: -3px; }
 }
 @media (min-width: 761px) and (max-width: 1100px) {
   .table-stage.showing-result:has(.achievement-badges) { min-height: 800px; max-height: none; }
