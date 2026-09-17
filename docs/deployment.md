@@ -1,5 +1,8 @@
 # Server deployment
 
+Additional server: [178.236.46.11 deployment](deployment-178.236.46.11.md),
+first deployed on 2026-09-16. The records below describe the original server.
+
 Host: `160.202.237.14`
 
 Initial release: `20260909T081802Z` (2026-09-09).

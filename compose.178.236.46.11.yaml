@@ -1,0 +1,48 @@
+name: river-room
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: poker
+      POSTGRES_USER: poker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - poker-db:/var/lib/postgresql/data
+      - poker-db-socket:/var/run/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poker -d poker"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    environment:
+      DATABASE_URL: postgresql+psycopg://poker:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@/poker?host=/var/run/postgresql
+      # Trust the existing local Nginx proxy and Cloudflare (ranges fetched 2026-09-16).
+      FORWARDED_ALLOW_IPS: "127.0.0.1,173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,104.24.0.0/14,172.64.0.0/13,131.0.72.0/22,2400:cb00::/32,2606:4700::/32,2803:f800::/32,2405:b500::/32,2405:8100::/32,2a06:98c0::/29,2c0f:f248::/32"
+    command: ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8080"]
+    # Bind 8080 directly on the host so ordinary UFW INPUT rules apply.
+    network_mode: host
+    volumes:
+      - poker-db-socket:/var/run/postgresql:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  poker-db:
+  poker-db-socket:
