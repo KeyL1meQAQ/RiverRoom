@@ -366,7 +366,7 @@ test('nine-player double runout and ordinary play fit with readable cards and se
               if (Math.abs(cardOverlap - 8) > 1) issues.push(`${wrap.className} card overlap is ${cardOverlap}px`);
             } else {
               const cardOverlap = cards.bottom - frame.top;
-              if (Math.abs(cardOverlap - 4) > 1) issues.push(`${wrap.className} mobile card overlap is ${cardOverlap}px`);
+              if (Math.abs(cardOverlap - 2) > 1) issues.push(`${wrap.className} mobile card overlap is ${cardOverlap}px`);
               if (label?.left < 0 || label?.right > innerWidth) issues.push(`${wrap.className} hand label leaves viewport`);
             }
           }
@@ -648,6 +648,43 @@ test('mobile overlapping hole cards preserve both independent reveal targets', a
   push(waiting);
   await expect(page.locator('.hole-card-outline')).toHaveCount(4);
   await expect(page.locator('.hole-card-outline').first()).not.toHaveCSS('transform', 'none');
+});
+
+test('mobile hole-card ranks and suits remain visible above overlapping cards and player frames', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const snapshot = structuredClone(fixtures.tie);
+  snapshot.players.filter(player => player.seat !== null).forEach((player, index) => {
+    player.cards = [`T${['c', 's', 'h', 'd'][index % 4]}`, 'Ad'];
+  });
+  const push = await mount(page, snapshot);
+  // Include non-interactive card faces in hit testing without changing their paint order.
+  await page.addStyleTag({ content: '.hole-cards, .hole-cards * { pointer-events: auto !important; }' });
+  for (const width of [320, 360, 390, 760]) {
+    await page.setViewportSize({ width, height: 844 });
+    push(snapshot);
+    const glyphs = page.locator('.hole-cards .playing-card > b, .hole-cards .playing-card > span');
+    for (const glyph of await glyphs.all()) {
+      await glyph.scrollIntoViewIfNeeded();
+      const hidden = await glyph.evaluate(node => {
+        const rect = node.getBoundingClientRect();
+        const card = node.closest('.playing-card')!;
+        const points = [
+          [rect.left + 2, rect.top + rect.height / 2],
+          [rect.right - 2, rect.top + rect.height / 2],
+          [rect.left + rect.width / 2, rect.bottom - 2],
+        ];
+        return points.filter(([x, y]) => !card.contains(document.elementFromPoint(x, y))).map(() =>
+          `${card.closest('.seat-wrap')!.className}: ${node.textContent}`);
+      });
+      expect.soft(hidden, `${width}px glyph occlusion`).toEqual([]);
+    }
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  push('tie');
+  await expect(page.locator('.own-seat .playing-card > b').first()).toHaveText(
+    fixtures.tie.players.find(player => player.id === fixtures.tie.me)!.cards[0]![0]);
+  await page.locator('.table-toolbar').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'artifacts/ui-20260917-suits-mobile-fixed.png', fullPage: true });
 });
 
 test('ordinary settlement amounts share a line at mobile and desktop breakpoints', async ({ page }) => {

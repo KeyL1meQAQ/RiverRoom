@@ -60,3 +60,8 @@
 - 后端 73 项回归通过；本次未修改后端规则。
 - 核对手机单赢家、九人平分、拥挤双公共牌及桌面截图。产物见 `artifacts/ui-20260917-winning-mobile.png`、`artifacts/presentation-tie-mobile.png`、`artifacts/player-polish-crowded-390.png` 和 `artifacts/presentation-tie-desktop.png`。
 - 以上结论来自本地 Chromium 与独立 SQLite 测试后端，不代表线上已更新。
+
+
+## 后续花色遮挡修正
+
+用户反馈手机交叠后花色被遮住。按实际字符可见区域微调：交叠量从三分之一改为四分之一，后牌字符移向露出区域，底牌及字符稍向上移动，保留尺寸、字号和独立亮牌点击。本节更新 Q4 的具体交叠参数；320/360/390/760px 字符绘制层级检查及 16 项展示测试通过。

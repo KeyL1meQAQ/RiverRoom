@@ -3010,7 +3010,7 @@ dialog::backdrop {
   .table-stage .seat.empty { height: 40px; margin-top: 12px; gap: 2px; font-size: 10px; border-radius: 5px; }
   .table-stage .seat.empty svg { width: 16px; height: 16px; }
   .table-stage .hole-cards {
-    top: -36px;
+    top: -38px;
     bottom: auto;
     left: 50%;
     right: auto;
@@ -3022,10 +3022,15 @@ dialog::backdrop {
   .table-stage .hole-cards .playing-card { width: 28px; height: 40px; border-radius: 3px; }
   .table-stage .hole-cards .playing-card b, .table-stage .hole-cards .playing-card > span { font-size: 18px; }
   .table-stage .hole-cards .playing-card > span { margin-top: 0; }
-  .table-stage .hole-cards > :first-child { transform: rotate(-6deg); }
-  .table-stage .hole-cards > :last-child { transform: rotate(6deg); margin-left: calc(var(--mobile-hole-width) / -3); }
+  .table-stage .hole-cards > :first-child {
+    transform: rotate(-6deg);
+    --hole-index-offset: calc(var(--mobile-hole-width) / -8);
+  }
+  .table-stage .hole-cards .playing-card > b,
+  .table-stage .hole-cards .playing-card > span { translate: var(--hole-index-offset, 0px) -1px; }
+  .table-stage .hole-cards > :last-child { transform: rotate(6deg); margin-left: calc(var(--mobile-hole-width) / -4); }
   .table-stage .hole-cards > * { position: relative; }
-  .table-stage .own-seat .hole-cards { top: -52px; gap: 0; --mobile-hole-width: 40px; }
+  .table-stage .own-seat .hole-cards { top: -54px; gap: 0; --mobile-hole-width: 40px; }
   .table-stage .own-seat .hole-cards .playing-card { width: 40px; height: 56px; }
   .table-stage .own-seat .hole-cards .playing-card b, .table-stage .own-seat .hole-cards .playing-card > span { font-size: 24px; }
   .table-stage .seat-hand-label {
