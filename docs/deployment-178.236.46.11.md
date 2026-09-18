@@ -1,6 +1,6 @@
 # River Room: 178.236.46.11
 
-Current configuration (verified 2026-09-17): public HTTPS/WSS at
+Current configuration (verified 2026-09-18): public HTTPS/WSS at
 `https://rr.zandz.nexus` reaches the operator's existing Nginx listener on **443**,
 which proxies to `127.0.0.1:8080`. River Room retains host networking and the
 private PostgreSQL socket. This supersedes the initial direct Cloudflare-to-8080
@@ -38,6 +38,81 @@ no process listens on it and it is not published.
 
 Official Cloudflare ranges for future refreshes:
 https://www.cloudflare.com/ips-v4/ and https://www.cloudflare.com/ips-v6/.
+
+## Release 20260918T082921Z
+
+- Application source: `05019f6f28270be02171d515e045887ed3047592`, committed and pushed to `origin/main`
+  before deployment. Includes squid rounds, dynamic participation, capped independent
+  payments, leave/rejoin balances, configurable automatic reveal, and mobile
+  horizontal badges with top-left rank/suit indexes. Also carries the earlier
+  committed nine-player settlement fixes and 2–7 bounty changes not present in
+  the previous production release.
+- Active release: `/opt/poker/releases/20260918T082921Z`; previous release:
+  `/opt/poker/releases/20260917T101857Z`. `/opt/poker/current` changed atomically only after public
+  acceptance and test-room closure verification.
+- Built from an isolated 83-file source snapshot. The allowlisted transfer had
+  83 files and 569,606 bytes; SHA-256:
+  `d8c2fd334ccb23f9b2aa2e329867e049a9f749cf915b6a01a66aadfc1b1374f6`.
+  Every packaged source/dist hash was checked before building on the server;
+  no concurrent source edits were detected. Post-acceptance documentation is
+  synchronized separately from the immutable application snapshot.
+- New image: `sha256:385e3633937e632785be308a6524a9c37d42a8943c815bca2d974a9da9f060ef`.
+  Only the app container was recreated, starting at `2026-09-18T08:36:16.265773183Z`.
+  Host networking, 8080 listener, explicit proxy trust, Unix-socket DB mount and
+  both restart policies remain unchanged. Database and Y2P IDs/start times,
+  FRP process, Nginx/UFW hashes and firewall rules matched the preflight baseline.
+  No new published ports or Docker DNAT for 8080 were introduced.
+- Database backup: `/opt/poker/shared/backups/poker-20260918T082921Z.dump`,
+  77,642 bytes, mode 600. Created through the previous release's DB service and
+  validated with `pg_restore --list` before activation. No data restore occurred.
+- Rollback image: `river-room-app:rollback-20260918T082921Z`, holding previous image
+  `sha256:13a1b55c9e89e0cb9bc4f1780f565b6a9447e0be90c705a3b207bfcd3694708e`.
+  The old image does not implement squid-held balances: before an application
+  rollback, inspect/resolve any new unfinished squid rounds and held funds using
+  compatible code. Do not blindly deploy the old code over such state or restore
+  the backup and discard later operations. Preserve the current network contract.
+- Preflight and pre-activation: three open/started rooms, zero online players.
+  All three original rooms remain open and paused for owner recovery after restart.
+
+Acceptance evidence:
+
+- Isolated snapshot: 153 backend tests, production build and 50 local browser
+  tests passed. Same snapshot tests were used for public verification.
+- Public `https://rr.zandz.nexus/api/health` returned application JSON with
+  `Cache-Control: no-store`. Public HTML and referenced assets matched the staged
+  build byte-for-byte with normal TLS verification.
+- Public JS `index-C6YmEVXW.js` SHA-256:
+  `892522f9960492a4db75468042602ff4dc02cdc670b46d168d138e7ce5cdb67e`.
+- Public CSS `index-CRnkW3On.css` SHA-256:
+  `f0bb2a0c3c3901d9e4bfbfb50d1cf8bc637921b0a87b7e6fee2e7cdf450c622e`.
+- All 51 public browser test cases passed (about 5.5 minutes), including dedicated
+  HTTPS/WSS, identity-preserving reload and Secure/HttpOnly cookie checks, real
+  multiplayer approval/recovery/showdown, real squid creation and payment, and
+  deployed frontend presentation tests. Fixture-based cases intercept game state;
+  they establish frontend rendering/interaction, not every server game outcome.
+- The initial command exited nonzero because teardown actions for two run-created
+  rooms returned HTTP 400. Both had accepted the end request. Subsequent read-only
+  inspection and public API checks found both already closed; no database edits,
+  credential recovery or production-room actions were needed. The 51 test cases
+  passed, but the initial full invocation was not a clean exit.
+- All 20 captured run-created room IDs were verified closed, then confirmed by a
+  scoped read-only PostgreSQL count of 20/20. Original rooms were not closed.
+- Inspected run-specific 390px three-badge/corner-index capture and real mobile
+  multiplayer capture. The latter was captured during community-card animation;
+  settled layout acceptance uses the deterministic settled captures and geometry
+  checks at 320/360/390/760/761/1440px.
+- Application health and socket-based SQL query passed; one Uvicorn process,
+  private PostgreSQL, shared Nginx 443 and unrelated services were preserved.
+  Acceptance verifies the public hostname through Nginx; it does not assert
+  Cloudflare proxying or re-test direct-IP firewall access.
+
+Evidence on workstation: `artifacts/deploy-20260918T082921Z/`, including
+`commit-review.json`, `source-manifest.json`, `baseline.json`, `after.json`,
+`operational-verification.json`, `public-assets.json`, `public-browser.log`,
+`public-cleanup.json`, `cleanup-recovery.json`, `finalized.json`, and
+`public-captures/`. Server records include `build-20260918T082921Z.log`,
+`activation-20260918T082921Z.json`, `verified-20260918T082921Z.json`, and the
+backup/listing under `/opt/poker/shared/`. Run-owned transfer archive removed.
 
 ## Release 20260917T101857Z
 
