@@ -152,8 +152,8 @@ def test_allin_deals_streets_before_result_and_preserves_window(monkeypatch):
         game.tick(room, room['deadline'])
     assert stages == [3, 4, 5]
     assert hand['finished_at'] == 1002.25
-    assert hand['reveal_until'] == 1007.25
-    assert room['deadline'] == 1022.25
+    assert hand['reveal_until'] == hand['presentation']['until'] + 5
+    assert room['deadline'] == hand['presentation']['until'] + 20
     assert hand['showdown_results'][0]['winners'][0]['label'] == '一对[A]'
 
 
@@ -228,6 +228,10 @@ def test_twice_reuses_flop_without_dealing_it_again(monkeypatch):
     stages = []
     while room['phase'] == 'dealing':
         hand = room['hand']
+        if hand.get('runout_result'):
+            assert hand['result'] is None and not hand['awards']
+            game.tick(room, room['deadline'])
+            continue
         previous = hand['deal']['previous']
         stages.append([(b, len(board)) for b, board in enumerate(hand['boards']) if len(board) > previous[b]])
         game.tick(room, room['deadline'])
@@ -278,7 +282,7 @@ def test_partial_voluntary_reveal_cannot_leak_hand_label(monkeypatch):
     action(room, 'fold')
     finish(room)
     hand = room['hand']
-    now = hand['finished_at'] + 1
+    now = hand['reveal_start'] + 1
     game.command(room, folded, dict(type='show_cards', hand=hand['number'], cards=[0]), now)
     for viewer in [observer, folded]:
         assert folded not in game.view(room, viewer, now)['hand']['public_hand_labels']

@@ -54,11 +54,12 @@ export function SquidDetails({ room }: { room: Room }) {
 
 export function SquidNotice({ hand, connection, now }: { hand: Hand | null; connection: number; now: number }) {
   const event = hand?.squid;
+  const at = hand?.presentation?.until ?? event?.award.at ?? 0;
   const baseline = useRef({ connection, id: event?.award.id, until: 0 });
   if (baseline.current.connection !== connection) baseline.current = { connection, id: event?.award.id, until: 0 };
   else if (baseline.current.id !== event?.award.id) baseline.current = { connection, id: event?.award.id,
-    until: event ? Math.min(now + 3, event.award.at + 3) : 0 };
-  if (!event || now >= baseline.current.until) return null;
+    until: event ? at + 3 : 0 };
+  if (!event || now < at || now >= baseline.current.until || document.visibilityState !== 'visible') return null;
   return <div className="squid-notice" role="status">🦑 {event.award.name} 获得鱿鱼 · 本轮 {event.award.count} 个
     {event.settlement && <span>第 {event.award.round} 轮已结算 · 点击鱿鱼状态查看收付</span>}
   </div>;

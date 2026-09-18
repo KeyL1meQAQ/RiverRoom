@@ -9,7 +9,7 @@ const fixtures: Record<string, Room> = JSON.parse(execFileSync(
 
 function current(snapshot: Room) {
   const delta = Date.now() / 1000 - snapshot.server_time;
-  const timestamps = new Set(["server_time", "start", "until", "base_until", "deadline", "reveal_until", "at", "offline"]);
+  const timestamps = new Set(["server_time", "start", "until", "base_until", "deadline", "reveal_until", "reveal_start", "split_at", "pot_until", "bounty_at", "squid_at", "at", "offline"]);
   return JSON.parse(JSON.stringify(snapshot), (key, value) =>
     timestamps.has(key) && typeof value === "number" && value > 0 ? value + delta : value,
   ) as Room;
@@ -44,17 +44,16 @@ test('settled results survive the reveal deadline, reload, and the next straddle
   state.phase = 'between'; state.paused = true; state.rebuy = [];
   state.hand!.reveal_until = state.server_time - 1;
   const push = await mount(page, state);
-  const payoutCount = state.hand!.result!.filter(p => p.won > 0).length;
-  await expect(page.locator('.seat-payout')).toHaveCount(payoutCount);
+  await expect(page.locator('.seat-payout')).toHaveCount(0);
   await expect(page.locator('.winning-seat')).not.toHaveCount(0);
   await expect(page.locator('.table-status')).toHaveText('后续发牌已暂停');
   await expect(page.locator('.reveal-card')).toHaveCount(0);
   await page.reload();
-  await expect(page.locator('.seat-payout')).toHaveCount(payoutCount);
+  await expect(page.locator('.seat-payout')).toHaveCount(0);
   state.phase = 'straddle'; state.straddle = state.me; state.deadline = state.server_time + 5;
   push(state);
   await expect(page.locator('.table-status')).toContainText('UTG 选择 Straddle');
-  await expect(page.locator('.seat-payout')).toHaveCount(payoutCount);
+  await expect(page.locator('.seat-payout')).toHaveCount(0);
   push('preflop');
   await expect(page.locator('.seat-payout')).toHaveCount(0);
   await expect(page.locator('.winning-seat')).toHaveCount(0);
@@ -336,11 +335,11 @@ test("nine tied winners highlight only the board, remain inspectable in history,
   expect(errors).toEqual([]);
 });
 
-test("both runouts highlight all main-pot winners while side-pot winners only show labels and payouts", async ({ page }) => {
+test("final runout alone highlights its main-pot winners; payouts are absent from player frames", async ({ page }) => {
   const push = await mount(page, "twice");
   const groups = fixtures.twice.hand!.showdown_results!;
   expect(groups.length).toBeGreaterThanOrEqual(4);
-  const main = groups.filter(group => group.pot === 0);
+  const main = groups.filter(group => group.pot === 0 && group.board === 1);
   const mainIds = new Set(main.flatMap(group => group.winners.map(winner => winner.pid)));
   await expect(page.getByRole("combobox", { name: "底池结果" })).toHaveCount(0);
   await expect(page.locator(".winning-seat")).toHaveCount(mainIds.size);
@@ -348,24 +347,22 @@ test("both runouts highlight all main-pot winners while side-pot winners only sh
     const seat = page.getByRole('button', { name: `${player.name}，筹码 ${player.stack}`, exact: true });
     if (mainIds.has(player.id)) await expect(seat).toHaveClass(/winning-seat/);
     else await expect(seat).not.toHaveClass(/winning-seat/);
-    for (let board = 0; board < 2; board++) {
+    for (let board = 1; board < 2; board++) {
       const row = seat.locator('..').locator(`.seat-hand-label > span[data-board="${board}"]`);
       await expect(row).toContainText(fixtures.twice.hand!.public_hand_labels![player.id][board]);
     }
-    const payout = fixtures.twice.hand!.result!.find(result => result.pid === player.id)!.won;
-    if (payout > 0) await expect(seat.locator('.seat-payout')).toHaveText(`+${payout.toLocaleString('zh-CN')}`);
-    else await expect(seat.locator('.seat-payout')).toHaveCount(0);
+    await expect(seat.locator('.seat-payout')).toHaveCount(0);
     const expectedHoles = new Set(main.flatMap(group => group.winners.filter(w => w.pid === player.id).flatMap(w => w.cards)).filter(card => player.cards.includes(card)));
     await expect(seat.locator('..').locator('.hole-cards .winning-card')).toHaveCount(expectedHoles.size);
   }
-  for (let board = 0; board < 2; board++) {
+  for (let board = 1; board < 2; board++) {
     const expected = new Set(main.filter(group => group.board === board).flatMap(group => group.winners.flatMap(w => w.cards)).filter(card => fixtures.twice.hand!.boards[board].includes(card)));
-    await expect(page.locator('.board').nth(board).locator('.winning-card')).toHaveCount(expected.size);
+    await expect(page.locator('.board').first().locator('.winning-card')).toHaveCount(expected.size);
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator(".side-panel")).not.toBeInViewport();
   push("twice");
-  await expect(page.locator('.own-seat .seat-hand-label > span')).toHaveCount(2);
+  await expect(page.locator('.own-seat .seat-hand-label > span')).toHaveCount(1);
   await page.screenshot({ path: "artifacts/presentation-twice-mobile.png", fullPage: true });
 });
 
@@ -391,7 +388,7 @@ test('side-pot-only winner is visible without a winning frame or highlighted hol
   const seat = page.getByRole('button', { name: `${player.name}，筹码 ${player.stack}`, exact: true });
   await expect(seat).not.toHaveClass(/winning-seat/);
   await expect(seat.locator('..').locator('.seat-hand-label')).toContainText(sideWinner.label);
-  await expect(seat.locator('.seat-payout')).toBeVisible();
+  await expect(seat.locator('.seat-payout')).toHaveCount(0);
   await expect(seat.locator('..').locator('.hole-cards .winning-card')).toHaveCount(0);
 });
 
@@ -409,9 +406,9 @@ test('nine-player double runout and ordinary play fit with readable cards and se
       await expect(page.locator('.table-stage .seat-top')).toHaveCount(9);
       await expect(page.locator('.table-stage .seat-stack-row')).toHaveCount(9);
       if (fixture === 'nine_twice') {
-        await expect(page.locator('.seat-hand-label > span')).toHaveCount(18);
-        await expect(page.locator('.boards .winning-card')).toHaveCount(10);
-        await expect(page.locator('.seat-payout')).toHaveCount(fixtures.nine_twice.hand!.result!.filter(result => result.won > 0).length);
+        await expect(page.locator('.seat-hand-label > span')).toHaveCount(9);
+        await expect(page.locator('.boards .winning-card')).toHaveCount(5);
+        await expect(page.locator('.seat-payout')).toHaveCount(0);
       }
       const issues = await page.evaluate(() => {
         const overlaps = (a: DOMRect, b: DOMRect) =>
@@ -458,7 +455,7 @@ test('nine-player double runout and ordinary play fit with readable cards and se
           if (overlaps(hint.getBoundingClientRect(), text.getBoundingClientRect())) issues.push(`own hint overlaps ${text.className}`);
         }
         if (document.documentElement.scrollWidth > innerWidth) issues.push('horizontal overflow');
-        if (innerWidth <= 760 && innerHeight >= 740 && !document.querySelector('.showing-result.double-board')) {
+        if (innerWidth <= 760 && innerHeight >= 740 && document.querySelectorAll('.showing-result .seat-wrap.has-result').length < 9) {
           const main = document.querySelector('.room-main')!;
           if (main.scrollHeight > main.clientHeight + 1) issues.push('table needs scrolling');
           const footer = document.querySelector('.action-bar')!.getBoundingClientRect();
@@ -572,8 +569,8 @@ test('player frames keep names, progress and complete winnings readable through 
     result.hand!.result!.forEach(row => { if (row.won) row.won = 987654321; });
     push(result);
     await expect(page.locator('.turn-track')).toHaveCount(0);
-    await expect(page.locator('.seat-payout').first()).toHaveText('+987,654,321');
-    await expect(page.locator('.seat-hand-label > span')).toHaveCount(18);
+    await expect(page.locator('.seat-payout')).toHaveCount(0);
+    await expect(page.locator('.seat-hand-label > span')).toHaveCount(9);
     const issues = await page.evaluate(() => {
       const intersects = (a: DOMRect, b: DOMRect) => Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1 && Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1;
       const issues: string[] = [];
@@ -650,7 +647,7 @@ test('settlement raises whole winning cards once and dims only visible non-winni
   expired.hand!.reveal_until = expired.server_time - 1;
   push(expired);
   await expect(page.locator('.table-stage')).toHaveClass(/showing-result/);
-  await expect(page.locator('.seat-payout').first()).toBeVisible();
+  await expect(page.locator('.seat-payout')).toHaveCount(0);
   await expect(page.locator('.winning-seat').first()).toBeVisible();
   await expect(page.locator('.reveal-card')).toHaveCount(0);
   await expect(winners).toHaveCount(count);
@@ -772,7 +769,7 @@ test('mobile hole-card ranks and suits remain visible above overlapping cards an
   await page.screenshot({ path: 'artifacts/ui-20260917-suits-mobile-fixed.png', fullPage: true });
 });
 
-test('ordinary settlement amounts share a line at mobile and desktop breakpoints', async ({ page }) => {
+test('settled stacks remain on one line without a payout capsule at all breakpoints', async ({ page }) => {
   const result = structuredClone(fixtures.tie);
   result.players.forEach(player => { player.stack = 200; });
   result.hand!.result!.forEach(row => { row.won = 123; });
@@ -780,11 +777,11 @@ test('ordinary settlement amounts share a line at mobile and desktop breakpoints
   for (const width of [320, 360, 390, 760, 761, 1440]) {
     await page.setViewportSize({ width, height: 960 });
     push(result);
-    await expect(page.locator('.seat-payout').first()).toHaveText('+123');
+    await expect(page.locator('.seat-payout')).toHaveCount(0);
     const issues = await page.locator('.seat-stack-row').evaluateAll(rows => rows.flatMap(row => {
       const stack = row.querySelector('.stack')!.getBoundingClientRect();
-      const payout = row.querySelector('.seat-payout')!.getBoundingClientRect();
-      return Math.abs((stack.top + stack.bottom) / 2 - (payout.top + payout.bottom) / 2) > 1 ? ['ordinary amount wrapped'] : [];
+      const bounds = row.getBoundingClientRect();
+      return stack.left < bounds.left - 1 || stack.right > bounds.right + 1 ? ['stack overflows row'] : [];
     }));
     expect(issues, `${width}px`).toEqual([]);
   }

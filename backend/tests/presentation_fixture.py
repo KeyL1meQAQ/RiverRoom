@@ -87,6 +87,9 @@ def snapshots():
         result['folded_before'] = game.view(room, folded, 1001)
         finish(room)
         result['folded_after'] = game.view(room, folded, room['hand']['finished_at'])
+    for snapshot in result.values():
+        if snapshot['hand'] and snapshot['hand']['result'] is not None:
+            snapshot['server_time'] = snapshot['hand']['reveal_start']
     return copy.deepcopy(result)
 
 

@@ -70,6 +70,10 @@ export type Hand = {
   button: number;
   boards: string[][];
   deal?: { seq: number; start: number; until: number; previous: number[] } | null;
+  active_board?: number;
+  runout_result?: PotResult[];
+  presentation?: SettlementPresentation | null;
+  reveal_start?: number;
   own_hand_labels?: string[][];
   public_hand_labels?: Record<string, string[]>;
   showdown_results?: PotResult[];
@@ -96,6 +100,16 @@ export type Hand = {
     initial: number;
   } | null;
   last_actions: Record<string, string>;
+};
+export type ChipTransfer = {
+  kind: 'pot' | 'bounty' | 'squid'; source: string | null; target: string;
+  amount: number; start: number; until: number;
+};
+export type SettlementPresentation = {
+  start: number; split_at: number; pot_until: number; until: number;
+  bounty_at: number; squid_at: number;
+  accounts: Record<string, { pid: string; name: string; seat: number | null; before: number }>;
+  events: ChipTransfer[];
 };
 export type PotResult = {
   board: number;

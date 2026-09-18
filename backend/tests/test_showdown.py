@@ -32,7 +32,8 @@ def reach_river(room):
         action(room)
 
 
-def show(room, pid, cards, now=1002, number=None):
+def show(room, pid, cards, now=None, number=None):
+    now = room['hand'].get('reveal_start', 1001) + 1 if now is None else now
     game.command(room, pid, {'type': 'show_cards', 'hand': number or room['number'], 'cards': cards}, now)
 
 
@@ -43,7 +44,7 @@ def test_check_showdown_reveals_prefix_through_final_winner(monkeypatch):
     assert hand['awards'][0]['board'] is None
     assert hand['showdown_order'] == ids
     assert hand['revealed'] == ids[:3]
-    assert hand['reveal_until'] == hand['finished_at'] + 5
+    assert hand['reveal_until'] == hand['reveal_start'] + 5
     for viewer in [observer, *ids]:
         state = game.view(room, viewer, 1002)
         assert not any(p['folded'] for p in state['players'])
@@ -113,7 +114,7 @@ def test_fold_win_and_folded_single_card_reveal(monkeypatch):
     count = len(room['logs'])
     show(room, folded, [1])
     assert len(room['logs']) == count
-    show(room, folded, [0, 1], now=1003)
+    show(room, folded, [0, 1], now=room['hand']['reveal_start'] + 2)
     assert folded in room['hand']['revealed']
     assert game.public_hand(room['hand'], observer)['cards'][folded] == room['hand']['dealt'][folded]
     assert [p['stack'] for p in room['players'].values()] == balances
@@ -173,7 +174,7 @@ def test_deadline_hand_number_and_membership_are_checked(monkeypatch):
     with pytest.raises(game.GameError, match='没有可展示'):
         show(room, observer, [0])
     with pytest.raises(game.GameError, match='时间已结束'):
-        show(room, ids[0], [0], now=1006)
+        show(room, ids[0], [0], now=room['hand']['reveal_until'])
     game.tick(room, 1010)
     assert room['number'] == 1
     with pytest.raises(game.GameError, match='时间已结束'):
@@ -222,7 +223,7 @@ def test_rebuy_resolving_early_preserves_five_seconds(monkeypatch):
     action(room, 'raise', 100)
     action(room)
     assert room['phase'] == 'rebuy'
-    finished_at = room['hand']['finished_at']
+    finished_at = room['hand']['reveal_start']
     assert room['deadline'] == finished_at + 20
     loser = room['rebuy'][0]
     game.command(room, loser, {'type': 'topup', 'amount': 100}, finished_at + 1)
@@ -246,8 +247,9 @@ def test_closing_waits_for_reveal_and_leavers_can_show(monkeypatch):
     assert room['closed_at'] is None
     show(room, departing, [0])
     assert game.public_hand(room['hand'], observer)['cards'][departing][0]
-    game.tick(room, 1006)
-    assert room['closed_at'] == 1006
+    deadline = room['hand']['reveal_until']
+    game.tick(room, deadline)
+    assert room['closed_at'] == deadline
 
 
 def test_partial_reveal_survives_restart_without_extending_deadline(monkeypatch, tmp_path):
@@ -260,7 +262,7 @@ def test_partial_reveal_survives_restart_without_extending_deadline(monkeypatch,
     store.save(room)
     restored = Service(store).rooms[room['id']]
     game.command(restored, restored['owner'], {'type': 'resume'}, 1010)
-    assert restored['hand']['reveal_until'] == 1006
+    assert restored['hand']['reveal_until'] == room['hand']['reveal_until']
     with pytest.raises(game.GameError, match='时间已结束'):
         show(restored, ids[0], [1], now=1010)
     public = game.view(restored, observer, 1010)

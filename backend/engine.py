@@ -86,7 +86,7 @@ def pot_winners(state, pot, board):
 def new_hand(ids, seats, stacks, blinds, big_blind, number):
     deck = list(Deck.STANDARD)
     secrets.SystemRandom().shuffle(deck)
-    return dict(number=number, rules_version=RULES_VERSION, ids=ids, seats=seats, initial=stacks, blinds=blinds,
+    return dict(number=number, rules_version=RULES_VERSION, presentation_version=1, ids=ids, seats=seats, initial=stacks, blinds=blinds,
                 big_blind=big_blind, deck=[repr(c) for c in deck], ops=[], dealt={},
                 revealed=[], shown_cards={}, showdown_order=[], reveal_version=1,
                 votes={}, runouts=None, awards=[], result=None,

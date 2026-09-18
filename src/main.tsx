@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import type { Config, Hand, Player, PotResult, Room } from "./types";
 import { useBoardPresentation, useSoundPreference } from "./presentation";
+import { FlipNumber, SettlementLayer, settlementBalances, useMotionBaseline } from "./settlement";
 import { AchievementBadges, AchievementDetails } from "./Achievements";
 import { BountyCelebration, BountyRules } from "./Bounty";
 import { SquidRules, SquidDetails, SquidNotice, SquidSettlementView } from "./Squid";
@@ -67,41 +68,26 @@ const commandId = () =>
     b.toString(16).padStart(2, "0"),
   ).join("");
 
-function SeatAmounts({ stack, payout }: { stack: number; payout: number }) {
+function SeatAmounts({ stack, now, motionKey, pid }: { stack: number; now: number; motionKey: string; pid: string }) {
   const rowRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const row = rowRef.current!;
     const amount = row.querySelector<HTMLElement>('.stack')!;
-    const award = row.querySelector<HTMLElement>('.seat-payout');
     const fit = () => {
-      const mobile = window.matchMedia('(max-width: 760px)').matches;
-      const size = mobile ? 12 : 14;
-      const minimum = mobile ? 11 : 12;
+      const size = window.matchMedia('(max-width: 760px)').matches ? 12 : 14;
       amount.style.fontSize = `${size}px`;
-      if (award) award.style.fontSize = mobile ? '10px' : '11px';
-      const width = row.clientWidth;
-      const natural = amount.getBoundingClientRect().width;
-      const awardWidth = award?.getBoundingClientRect().width || 0;
-      if (width <= 0 || natural <= 0) return;
-      // Reduce the stack first; flex-wrap moves an intact payout to its own line.
-      const available = width - (award ? awardWidth + 4 : 0);
-      const fitted = Math.min(size, Math.max(minimum, size * available / natural));
-      amount.style.fontSize = `${Math.min(fitted, size * width / natural)}px`;
-      if (award && awardWidth > width) {
-        const style = getComputedStyle(award);
-        const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + 2;
-        award.style.fontSize = `${(mobile ? 10 : 11) * (width - padding) / (awardWidth - padding)}px`;
-      }
+      const width = amount.getBoundingClientRect().width;
+      if (width > row.clientWidth && row.clientWidth > 0) amount.style.fontSize = `${size * row.clientWidth / width}px`;
     };
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(row);
-    window.addEventListener('resize', fit);
-    return () => { observer.disconnect(); window.removeEventListener('resize', fit); };
-  }, [stack, payout]);
+    return () => observer.disconnect();
+  }, [stack]);
   return <div className="seat-stack-row" ref={rowRef}>
-    <strong className="stack" title={n(stack)}><span className="stack-full">{n(stack)}</span></strong>
-    {payout > 0 && <strong className="seat-payout" aria-label={`获胜 ${n(payout)}`}>+{n(payout)}</strong>}
+    <strong className="stack" title={n(stack)} data-chip-target={pid}>
+      <FlipNumber value={stack} now={now} motionKey={motionKey} />
+    </strong>
   </div>;
 }
 const phases: Record<string, string> = {
@@ -283,6 +269,7 @@ function ConfigFields({
 }) {
   const [rules, setRules] = useState(false);
   const [squidRules, setSquidRules] = useState(false);
+  const configId = useId();
   const field = (
     key: keyof Config,
     label: string,
@@ -333,23 +320,20 @@ function ConfigFields({
           onChange={(e) => change({ ...value, straddle: e.target.checked })}
         />
       </label>
-      <div className="bounty-option">
-        <label className="switch-row">
-          <span>2–7 杂色奖励</span>
-          <input type="checkbox" role="switch" checked={!!value.bounty}
-            onChange={e => change({ ...value, bounty: e.target.checked,
-              bounty_amount: value.bounty_amount ?? (e.target.checked ? value.bb : null) })} />
-        </label>
+      <div className="switch-row bounty-option">
+        <label htmlFor={`${configId}-bounty`}>2–7 杂色奖励</label>
         <IconButton title="2–7 奖励规则" onClick={() => setRules(true)}><Info size={17} /></IconButton>
+        <input id={`${configId}-bounty`} type="checkbox" role="switch" checked={!!value.bounty}
+          onChange={e => change({ ...value, bounty: e.target.checked,
+            bounty_amount: value.bounty_amount ?? (e.target.checked ? value.bb : null) })} />
       </div>
       {value.bounty && field('bounty_amount', '每人奖励筹码', 1, Number.MAX_SAFE_INTEGER)}
-      <div className="bounty-option">
-        <label className="switch-row"><span>鱿鱼游戏</span>
-          <input type="checkbox" role="switch" checked={!!value.squid}
-            onChange={e => change({ ...value, squid: e.target.checked,
-              squid_amount: value.squid_amount ?? (e.target.checked ? value.bb : null) })} />
-        </label>
+      <div className="switch-row bounty-option">
+        <label htmlFor={`${configId}-squid`}>鱿鱼游戏</label>
         <IconButton title="鱿鱼游戏规则" onClick={() => setSquidRules(true)}><Info size={17} /></IconButton>
+        <input id={`${configId}-squid`} type="checkbox" role="switch" checked={!!value.squid}
+          onChange={e => change({ ...value, squid: e.target.checked,
+            squid_amount: value.squid_amount ?? (e.target.checked ? value.bb : null) })} />
       </div>
       {value.squid && <>
         {field('squid_amount', '鱿鱼价格 / 筹码', 1, Math.floor(Number.MAX_SAFE_INTEGER / 500))}
@@ -660,16 +644,24 @@ function PokerTable({
   const me = room.players.find((p) => p.id === room.me)!;
   const hand = room.hand;
   const showingResult = !!hand?.result;
-  const showingHandSeats = showingResult && now < hand!.reveal_until;
+  // Keep the existing voluntary-reveal seats after the transfer presentation.
+  // During transfers, leavers use the central identity cards instead.
+  const showingHandSeats = showingResult && (!hand?.presentation || now >= hand.presentation.until) && now < hand!.reveal_until;
+  const stageRef = useRef<HTMLDivElement>(null);
+  const motion = useMotionBaseline(connection, now);
+  const plan = hand?.presentation;
+  const settling = !!plan && now < plan.until;
+  const balances = settling ? settlementBalances(plan, now) : {};
+  const activeBoard = hand?.result ? Math.max(0, (hand.boards.length || 1) - 1) : hand?.active_board || 0;
   const { boards, animated } = useBoardPresentation(hand, now, connection, sound);
-  const groups = hand?.result ? hand.showdown_results || [] : [];
+  const groups = (hand?.result ? hand.showdown_results || [] : hand?.runout_result || []).filter(group => group.board === activeBoard);
   const mainGroups = groups.filter(group => group.pot === 0);
   // A settled hand loaded on entry/reconnection gets its final pose immediately.
-  const resultBaseline = useRef({ connection, number: hand?.number, settled: !!hand?.result, animateUntil: 0 });
+  const resultBaseline = useRef({ connection, number: hand?.number, settled: `${!!hand?.result}:${!!hand?.runout_result?.length}`, animateUntil: 0 });
   if (resultBaseline.current.connection !== connection || resultBaseline.current.number !== hand?.number) {
-    resultBaseline.current = { connection, number: hand?.number, settled: !!hand?.result, animateUntil: 0 };
-  } else if (!resultBaseline.current.settled && hand?.result) {
-    resultBaseline.current.settled = true;
+    resultBaseline.current = { connection, number: hand?.number, settled: `${!!hand?.result}:${!!hand?.runout_result?.length}`, animateUntil: 0 };
+  } else if (resultBaseline.current.settled !== `${!!hand?.result}:${!!hand?.runout_result?.length}`) {
+    resultBaseline.current.settled = `${!!hand?.result}:${!!hand?.runout_result?.length}`;
     resultBaseline.current.animateUntil = now + .3;
   }
   const animateWin = now < resultBaseline.current.animateUntil;
@@ -677,7 +669,7 @@ function PokerTable({
   const playing = hand && hand.result === null;
   const countdown = Math.max(0, Math.ceil((room.deadline || 0) - now));
   return (
-    <div className={`table-stage ${showingResult ? "showing-result" : ""} ${boards.length > 1 ? "double-board" : ""}`}>
+    <div ref={stageRef} className={`table-stage ${showingResult || groups.length ? "showing-result" : ""}`} data-settling={settling}>
       <div className="table-rail">
         <div className="felt">
           <span className="felt-brand">
@@ -686,23 +678,14 @@ function PokerTable({
         </div>
       </div>
       <div className="table-center">
-        {room.number > 0 && (
-          <div className="pot-label">
-            {hand?.result ? "本手底池" : "底池"}{" "}
-            <strong>
-              {n(
-                hand?.result
-                  ? hand.awards.reduce(
-                      (s, a) => s + a.amounts.reduce((s, a) => s + a, 0),
-                      0,
-                    )
-                  : room.pot,
-              )}
-            </strong>
-          </div>
-        )}
+        <div className="pot-origin" data-pot-origin>
+          {room.number > 0 && (!hand?.result || (plan && now < plan.split_at && plan.events.some(e => e.kind === 'pot'))) &&
+            <div className="pot-capsule" aria-label={`底池 ${n(hand?.result ? hand.result.reduce((sum, r) => sum + r.won, 0) : room.pot)}`}>
+              <Coins size={17} aria-hidden="true" /><strong>{n(hand?.result ? hand.result.reduce((sum, r) => sum + r.won, 0) : room.pot)}</strong>
+            </div>}
+        </div>
         <div className="boards">
-          {boards.map((board, i) => (
+          {boards.map((board, i) => i === activeBoard && (
             <div className="board" key={i}>
               {hand && hand.boards.length > 1 && (
                 <span className="board-number">{i + 1}</span>
@@ -736,6 +719,10 @@ function PokerTable({
                 ? `UTG 选择 Straddle · ${countdown}s`
                 : room.phase === "runout"
                   ? `发两次牌？ · ${countdown}s`
+                  : settling
+                    ? "正在派彩"
+                  : hand?.runout_result?.length
+                    ? "第 1 组结果"
                   : room.phase === "rebuy"
                     ? `等待重买入 · ${countdown}s`
                     : room.paused
@@ -776,14 +763,14 @@ function PokerTable({
         const cards = inHand || (p && hand?.ids.includes(p.id)) ? p?.cards : [];
         const folded = !!(p?.folded && hand?.ids.includes(p.id));
         const displayedCards = cards?.length ? cards : folded ? [null, null] : [];
-        const labels = p && showingResult ? hand?.public_hand_labels?.[p.id] : undefined;
+        const labels = p && (showingResult || groups.length > 0) ? hand?.public_hand_labels?.[p.id] : undefined;
         const ownLabels = p?.id === room.me && hand?.own_hand_labels?.length && (playing || showingResult)
           ? hand.own_hand_labels.map((values, board) => values[boards[board]?.length || 0])
           : [];
-        const displayedLabels = labels?.length ? labels : ownLabels;
-        const payout = p && showingResult ? hand?.result?.find(result => result.pid === p.id)?.won || 0 : 0;
-        const mainWinner = p && showingResult && (hand?.uncontested_winner === p.id || hand?.awards.some(award => award.pot === 0 &&
-          (award.winners?.includes(hand.ids.indexOf(p.id)) || award.amounts[hand.ids.indexOf(p.id)] > 0)));
+        const allLabels = labels?.length ? labels : ownLabels;
+        const displayedLabels = allLabels[activeBoard] ? [allLabels[activeBoard]] : [];
+        const shownStack = p ? balances[p.id] ?? p.stack : 0;
+        const mainWinner = p && (hand?.uncontested_winner === p.id || mainGroups.some(group => group.winners.some(w => w.pid === p.id)));
         const winningHoles = new Set(mainGroups.flatMap(group => group.winners.filter(w => w.pid === p?.id).flatMap(w => w.cards)));
         const status = p && showingResult && p.seat === null
           ? "已离座"
@@ -795,7 +782,7 @@ function PokerTable({
               ? "离线"
               : p?.folded && playing
                 ? "已弃牌"
-                : p && room.rebuy.includes(p.id)
+                : p && !settling && room.rebuy.includes(p.id)
                   ? "等待重买入"
                   : p?.id === room.me
                     ? "你"
@@ -808,7 +795,7 @@ function PokerTable({
         return (
           <div
             key={seat}
-            className={`seat-wrap position-${position} ${p?.id === room.me ? "own-seat" : ""} ${displayedLabels.length || payout ? "has-result" : ""} ${displayedLabels.length > 1 ? "double-result" : ""} ${p && (n(p.stack).length > 7 || n(payout).length > 6) ? "large-amounts" : ""}`}
+            className={`seat-wrap position-${position} ${p?.id === room.me ? "own-seat" : ""} ${displayedLabels.length ? "has-result" : ""} ${displayedLabels.length > 1 ? "double-result" : ""} ${p && n(shownStack).length > 7 ? "large-amounts" : ""}`}
             style={
               {
                 "--x": `${x}%`,
@@ -822,7 +809,7 @@ function PokerTable({
               <button
                 className={`seat occupied ${p.id === room.me ? "self" : ""} ${actor ? "acting" : ""} ${p.away || (p.folded && playing) ? "muted" : ""} ${mainWinner ? "winning-seat" : ""}`}
                 onClick={() => select(p)}
-                aria-label={`${p.name}，筹码 ${p.stack}`}
+                aria-label={`${p.name}，筹码 ${shownStack}`}
               >
                 <div className="seat-top">
                   {p.id === room.owner && <Crown size={11} className="seat-owner" aria-label="房主" />}
@@ -833,15 +820,16 @@ function PokerTable({
                   {allIn ? <span className="seat-state all-in" title={status}>全下</span>
                     : compactStatus && compactStatus !== "你" && compactStatus !== "离线" && <span className="seat-state" title={status}>{compactStatus}</span>}
                 </div>
-                <SeatAmounts stack={p.stack} payout={payout} />
+                <SeatAmounts stack={shownStack} now={now} pid={p.id} motionKey={`${motion.key}:${p.id}`} />
                 {displayedLabels.length > 0 && <div
                   className={`seat-hand-label ${p.id === room.me ? "own-hand-label" : "public-hand-label"}`}
                   aria-label={p.id === room.me ? "本人成牌" : `${p.name}的摊牌牌型`}>
-                  {displayedLabels.map((label, board) => {
+                  {displayedLabels.map((label) => {
+                    const board = activeBoard;
                     const boardWinner = mainGroups.some(group => group.board === board && group.winners.some(w => w.pid === p.id));
                     return <span className={boardWinner ? "won-main" : ""} key={board} data-board={board}
-                      title={`${displayedLabels.length > 1 ? `第 ${board + 1} 组：` : ""}${label}`}>
-                      {displayedLabels.length > 1 && <small>{board === 0 ? "①" : "②"}</small>}{label}
+                      title={`${(hand?.runouts === 2 || hand?.boards.length === 2) ? `第 ${board + 1} 组：` : ""}${label}`}>
+                      {(hand?.runouts === 2 || hand?.boards.length === 2) && <small>{board === 0 ? "①" : "②"}</small>}{label}
                     </span>;
                   })}
                 </div>}
@@ -900,7 +888,7 @@ function PokerTable({
                         role="img" aria-label="已弃牌，未公开底牌">
                         <X className="hole-card-mark" aria-hidden="true" />
                       </span>
-                    ) : p.id === room.me && hand?.result && now < hand.reveal_until ? (
+                    ) : p.id === room.me && hand?.result && now >= (hand.reveal_start || 0) && now < hand.reveal_until ? (
                       <button
                         key={i}
                         className="reveal-card"
@@ -936,6 +924,7 @@ function PokerTable({
           </div>
         );
       })}
+      <SettlementLayer room={room} now={now} root={stageRef} baseline={motion.at} motionKey={motion.key} />
     </div>
   );
 }
@@ -979,11 +968,13 @@ function RoomScreen({
   const [logFilter, setLogFilter] = useState("all");
   const logRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    const update = () => setNow(Date.now() / 1000 + offset.current);
     const timer = setInterval(
-      () => setNow(Date.now() / 1000 + offset.current),
+      update,
       50,
     );
-    return () => clearInterval(timer);
+    document.addEventListener('visibilitychange', update);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', update); };
   }, []);
   useEffect(() => {
     let ws: WebSocket | null = null,
@@ -1115,6 +1106,8 @@ function RoomScreen({
   const target = room.players.find(p => p.id === targetSnapshot?.id) || targetSnapshot;
   const hand = room.hand;
   const active = hand && hand.result === null;
+  const presentationActive = !!hand?.presentation && now < hand.presentation.until;
+  const presentationBalances = presentationActive ? settlementBalances(hand!.presentation!, now) : {};
   const configPlaying = !!active || room.phase === 'straddle';
   const currentBounty = room.bounty_current || { enabled: !!room.settings.bounty, amount: room.settings.bounty_amount };
   const pendingBounty = configPlaying && (currentBounty.enabled !== !!room.settings.bounty ||
@@ -1124,7 +1117,7 @@ function RoomScreen({
     (room.settings.squid && (currentSquid.amount !== room.settings.squid_amount || currentSquid.reveal !== !!room.settings.squid_reveal)));
   const squidRound = room.squid_round;
   const showWindow = !!(hand?.result && hand.cards[me.id]?.length &&
-    now < hand.reveal_until && !room.closed_at);
+    now >= (hand.reveal_start || 0) && now < hand.reveal_until && !room.closed_at);
   const reveal = (cards: number[]) => {
     void send({ type: "show_cards", hand: hand?.number, cards });
   };
@@ -1311,7 +1304,7 @@ function RoomScreen({
                 ? "恢复暂停"
                 : room.paused
                   ? "后续发牌已暂停"
-                  : phases[room.phase]}
+                  : presentationActive ? '正在派彩' : phases[room.phase]}
             </span>
             <ResultScrollHint room={room} now={now} />
             <span className="toolbar-spacer" />
@@ -1691,7 +1684,7 @@ function RoomScreen({
             <span>
               {me.seat === null
                 ? `${room.players.filter((p) => p.online).length} 人在线`
-                : `筹码 ${n(me.stack)} · BANK ${Math.ceil(me.bank)}s`}
+                : `筹码 ${n(presentationBalances[me.id] ?? me.stack)} · BANK ${Math.ceil(me.bank)}s`}
             </span>
           </div>
           {me.seat !== null && (
@@ -1795,7 +1788,7 @@ function RoomScreen({
                 </>
               )}
             </div>
-          ) : room.rebuy.includes(me.id) ? (
+          ) : !presentationActive && room.rebuy.includes(me.id) ? (
             <div className="prompt-actions">
               <div>
                 <b>筹码归零，请重买入</b>
@@ -2184,7 +2177,7 @@ function RoomScreen({
               座位<b>{target.seat == null ? "已离座" : target.seat + 1}</b>
             </span>
             <span>
-              筹码<b>{n(target.stack)}</b>
+              筹码<b>{n(presentationBalances[target.id] ?? target.stack)}</b>
             </span>
             <span>
               净输赢

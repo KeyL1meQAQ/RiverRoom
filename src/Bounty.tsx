@@ -25,14 +25,15 @@ export function BountyCelebration({ hand, connection, now }: {
   hand: Hand | null; connection: number; now: number;
 }) {
   const award = hand?.bounty;
+  const at = hand?.presentation?.until ?? award?.at ?? 0;
   const baseline = useRef({ connection, event: award?.id, until: 0 });
   if (baseline.current.connection !== connection) {
     baseline.current = { connection, event: award?.id, until: 0 };
   } else if (baseline.current.event !== award?.id) {
     baseline.current = { connection, event: award?.id,
-      until: award ? Math.min(now + 3, award.at + 3) : 0 };
+      until: award ? at + 3 : 0 };
   }
-  if (!award || !hand?.result || now >= baseline.current.until) return null;
+  if (!award || !hand?.result || now < at || now >= baseline.current.until || document.visibilityState !== 'visible') return null;
   return <div className="bounty-celebration" key={award.id} role="status" aria-live="polite"
     aria-label={`${award.name}获得2-7奖励 +${n(award.total)}`}>
     <div className="bounty-halo" aria-hidden="true" />

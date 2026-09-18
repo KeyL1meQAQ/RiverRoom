@@ -46,7 +46,7 @@ def own_labels(hand, viewer):
 
 
 def public_labels(hand):
-    if hand['result'] is None:
+    if hand['result'] is None and not hand.get('runout_result'):
         return {}
     # Only public hole cards may contribute to a shared hand description.
     return {
@@ -91,3 +91,28 @@ def showdown_results(hand):
             else:
                 group['winners'].append(dict(pid=pid, amount=award['amounts'][i], label=label, cards=list(cards)))
     return [groups[key] for key in sorted(groups) if groups[key]['winners']]
+
+
+def runout_results(hand, state, board_index=0):
+    """Rank only a completed, public runout without advancing or paying chips."""
+    board = tuple(hand['boards'][board_index])
+    if len(board) != 5:
+        return []
+    pots = hand.get('pots') or [dict(amount=p.amount, eligible=[hand['ids'][i] for i in p.player_indices])
+                               for p in state.pots]
+    folded = set(hand.get('folded', []))
+    result = []
+    for index, pot in enumerate(pots):
+        eligible = [pid for pid in pot['eligible'] if pid in hand['revealed'] and pid not in folded]
+        ranked = {pid: StandardHighHand.from_game_or_none(''.join(board), ''.join(hand['dealt'][pid]))
+                  for pid in eligible}
+        best = max((value for value in ranked.values() if value is not None), default=None)
+        winners = [pid for pid in hand['ids'] if pid in ranked and best is not None and ranked[pid] == best]
+        if not winners:
+            continue
+        share = pot['amount'] // 2 + (pot['amount'] % 2 if board_index == 0 else 0)
+        q, remainder = divmod(share, len(winners))
+        result.append(dict(board=board_index, pot=index, winners=[
+            dict(pid=pid, amount=q + (i < remainder), label=describe(tuple(hand['dealt'][pid]), board)[0],
+                 cards=list(describe(tuple(hand['dealt'][pid]), board)[1])) for i, pid in enumerate(winners)]))
+    return result

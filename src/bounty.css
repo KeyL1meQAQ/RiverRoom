@@ -1,5 +1,5 @@
 .bounty-option { display: flex; align-items: center; gap: 6px; }
-.bounty-option .switch-row { flex: 1; min-width: 0; }
+.bounty-option > label { flex: 1; min-width: 0; margin: 0; color: inherit; }
 .bounty-option .icon-button { color: #bc9955; flex: 0 0 34px; }
 .bounty-rules { line-height: 1.7; }
 .bounty-rules ul { padding-left: 22px; }

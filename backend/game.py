@@ -2,7 +2,7 @@ import copy
 import secrets
 import time
 
-from . import achievements, bounty, engine, hands, squid
+from . import achievements, bounty, engine, hands, squid, settlement
 
 MAX_INTEGER = 9_007_199_254_740_991
 DEFAULTS = dict(sb=1, bb=2, timebank=10, refill=20, straddle=False, twice=False,
@@ -288,6 +288,7 @@ def progress_hand(room, state, now):
         previous = [len(old_boards[i]) if i < len(old_boards) else hand.get('runout_prefix', 0)
                     for i in range(len(hand['boards']))]
         count = sum(len(board) - previous[i] for i, board in enumerate(hand['boards']))
+        hand['active_board'] = next((i for i, board in enumerate(hand['boards']) if len(board) > previous[i]), 0)
         hand['deal'] = dict(seq=len(hand['ops']), start=now, until=now + count * .25,
                             previous=previous)
         room['deadline'] = hand['deal']['until']
@@ -324,6 +325,7 @@ def finish_hand(room, state, now):
     hand['revealed'] = list(dict.fromkeys(hand['revealed'] + order[:last_winner + 1]))
     hand['folded'] = engine.folded_players(hand, state)
     stacks = list(state.stacks)
+    captured = settlement.accounts(room, hand, state, payouts)
     hand['bounty'] = bounty.settle(room, hand, stacks, now)
     require(sum(stacks) == sum(hand['initial']) and min(stacks) >= 0, '奖励结算筹码不守恒')
     if hand['bounty'] is not None:
@@ -355,7 +357,10 @@ def finish_hand(room, state, now):
     hand['result'] = result
     hand['showdown_results'] = hands.showdown_results(hand)
     hand['finished_at'] = now
-    hand['reveal_until'] = now + 5
+    if hand.get('presentation_version'):
+        hand['presentation'] = settlement.timeline(hand, captured, now)
+    hand['reveal_start'] = hand.get('presentation', {}).get('until', now)
+    hand['reveal_until'] = hand['reveal_start'] + 5
     if not hand['awards']:
         hand['uncontested_winner'] = achievements.zero_pot_winner(hand)
         log(room, f"{room['players'][hand['uncontested_winner']]['name']} 获胜 · 无人形成底池，投入已退回", now)
@@ -370,7 +375,7 @@ def finish_hand(room, state, now):
         if req.get('approved') and room['players'][req['pid']]['seat'] is not None:
             credit_request(room, req, now, req['by'])
     room['rebuy'] = [p['id'] for p in room['players'].values() if p['seat'] is not None and p['stack'] == 0]
-    room.update(phase='rebuy' if room['rebuy'] else 'between', deadline=now + (20 if room['rebuy'] else 5))
+    room.update(phase='rebuy' if room['rebuy'] else 'between', deadline=hand['reveal_start'] + (20 if room['rebuy'] else 5))
     if room['closing']:
         close_room(room, now)
 
@@ -585,6 +590,7 @@ def command(room, pid, data, now):
         hand = room['hand']
         require(hand and hand['result'] is not None and pid in hand['dealt'], '当前没有可展示的底牌')
         require(data.get('hand') == hand['number'], '亮牌请求已过期')
+        require(now >= hand.get('reveal_start', 0), '派彩完成后可以亮牌')
         require(now < reveal_deadline(hand), '亮牌时间已结束')
         indices = data.get('cards')
         require(isinstance(indices, list) and 1 <= len(indices) <= 2, '请选择要亮出的底牌')
@@ -670,6 +676,15 @@ def tick(room, now):
 
 def complete_deal(room, now):
     hand = room['hand']
+    if (hand.get('presentation_version') and hand.get('runouts') == 2
+            and hand.get('active_board', 0) == 0 and len(hand.get('boards', [[]])[0]) == 5
+            and not hand.get('first_runout_shown')):
+        hand['runout_result'] = hands.runout_results(hand, engine.state_for(hand))
+        hand['first_runout_shown'] = True
+        hand['deal'] = None
+        room['deadline'] = now + 1.5
+        return
+    hand.pop('runout_result', None)
     log(room, '公共牌 ' + ' / '.join(' '.join(b) for b in hand['boards']), now)
     progress_hand(room, engine.state_for(hand), now)
 
@@ -719,7 +734,9 @@ def public_hand(hand, viewer, include_hint=False):
         boards=hand.get('boards', [[]]), cards={pid: visible_cards(hand, pid, viewer) for pid in hand['dealt']
         if pid == viewer or shown_indices(hand, pid)}, revealed=hand['revealed'],
         shown_cards={pid: shown_indices(hand, pid) for pid in hand['dealt'] if shown_indices(hand, pid)},
-        reveal_until=reveal_deadline(hand), deal=hand.get('deal'),
+        reveal_until=reveal_deadline(hand), reveal_start=hand.get('reveal_start', 0), deal=hand.get('deal'),
+        active_board=hand.get('active_board', 0), runout_result=copy.deepcopy(hand.get('runout_result', [])),
+        presentation=copy.deepcopy(hand.get('presentation')) if include_hint else None,
         showdown_results=hand.get('showdown_results', []),
         pots=copy.deepcopy(hand.get('pots', [])),
         uncontested_winner=hand.get('uncontested_winner'),

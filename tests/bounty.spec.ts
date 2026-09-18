@@ -12,7 +12,7 @@ async function mount(page: Page, initial: Room) {
   let socket: WebSocketRoute;
   function update(next: Room) {
     const offset = Date.now() / 1000 - next.server_time;
-    const timestamps = new Set(['server_time', 'start', 'until', 'base_until', 'deadline', 'reveal_until', 'at', 'offline']);
+    const timestamps = new Set(['server_time', 'start', 'until', 'base_until', 'deadline', 'reveal_until', 'reveal_start', 'split_at', 'pot_until', 'bounty_at', 'squid_at', 'at', 'offline']);
     state = JSON.parse(JSON.stringify(next), (key, value) => timestamps.has(key) &&
       typeof value === 'number' && value > 0 ? value + offset : value);
   }

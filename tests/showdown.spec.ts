@@ -96,6 +96,8 @@ test('folded cards persist through refresh and paused waiting, then reset on the
       await expect(page.locator('.folded-card-outline .lucide-x')).toHaveCount(2);
       await expect(page.locator('.hole-cards.folded')).toHaveCount(0);
     }
+    // The window now starts only after pot delivery, so first wait for it to open.
+    await expect(host.getByRole('group', { name: '本手亮牌' })).toBeVisible();
     await expect(host.getByRole('group', { name: '本手亮牌' })).toHaveCount(0, { timeout: 7000 });
     await host.reload();
     await observer.reload();

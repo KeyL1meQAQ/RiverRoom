@@ -1,0 +1,48 @@
+.pot-capsule {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 6px 13px; border: 1px solid #f1d99b70; border-radius: 999px;
+  background: linear-gradient(145deg, #173f37f0, #102f2bee); color: #ffe7ab;
+  box-shadow: 0 3px 12px #001d2355, inset 0 1px #fff1;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.pot-origin { min-height: 32px; display: flex; align-items: center; justify-content: center; }
+.pot-capsule strong { font-size: 16px; }
+.flying-chip {
+  position: absolute; top: 0; left: 0; z-index: 35; pointer-events: none;
+  display: flex; align-items: center; gap: 5px; padding: 5px 9px;
+  border: 1px solid #e5c273; border-radius: 999px;
+  color: #fff3ca; background: #285244; box-shadow: 0 3px 10px #0005;
+  white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums;
+  will-change: transform; visibility: hidden;
+}
+.flying-chip.squid { background: #59416c; border-color: #d7b5ee; }
+.departed-transfer {
+  position: absolute; z-index: 30; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  display: flex; align-items: center; justify-content: center; gap: 18px;
+  padding: 10px; border-radius: 16px; background: #12372ef5;
+  box-shadow: 0 6px 26px #001b2366; max-width: 72%; pointer-events: none;
+}
+.departed-account { display: grid; gap: 3px; min-width: 0; text-align: center; color: #f9f0d1; }
+.departed-caption { font-size: 10px; color: #c2d5cc; }
+.departed-name { font-size: 13px; overflow-wrap: anywhere; }
+.departed-stack { font-size: clamp(10px, 1.4vw, 16px); white-space: nowrap; }
+.flip-number, .flip-digits { display: inline-flex; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.flip-digit { display: inline-block; position: relative; perspective: 100px; line-height: 1.15; }
+.digit-current { display: block; }
+.digit-old, .digit-new { position: absolute; inset: 0; backface-visibility: hidden; background: var(--flip-bg, #fafbf8); }
+.digit-old { clip-path: inset(0 0 50%); animation: digit-top .2s ease-in both; }
+.digit-new { clip-path: inset(50% 0 0); animation: digit-bottom .2s .2s ease-out both; }
+.departed-account { --flip-bg: #12372e; }
+@keyframes digit-top { from { transform: rotateX(0); } to { transform: rotateX(-90deg); } }
+@keyframes digit-bottom { from { transform: rotateX(90deg); } to { transform: rotateX(0); } }
+@media (max-width: 760px) {
+  .pot-capsule { padding: 4px 10px; gap: 5px; }
+  .pot-capsule strong { font-size: 13px; }
+  .pot-capsule svg { width: 14px; height: 14px; }
+  .departed-transfer { flex-direction: column; gap: 12px; max-width: 62%; }
+  .departed-stack { font-size: clamp(9px, 3vw, 13px); }
+  .flying-chip { font-size: 11px; padding: 4px 7px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .digit-flaps, .flying-chip { display: none; }
+}
