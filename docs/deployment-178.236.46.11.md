@@ -39,6 +39,80 @@ no process listens on it and it is not published.
 Official Cloudflare ranges for future refreshes:
 https://www.cloudflare.com/ips-v4/ and https://www.cloudflare.com/ips-v6/.
 
+## Release 20260918T145838Z
+
+- Application source: `52392630379d88b71a3d0cc5782ea01d2c1b5347`, committed and
+  pushed to `origin/main`. Adds server-timed settlement presentation, recipient
+  pot transfers, sequential double-runout results, balance transitions and
+  departed-player payment presentation. Reveal/rebuy waits begin after payout
+  presentation completes.
+- Active release: `/opt/poker/releases/20260918T145838Z`; previous release:
+  `/opt/poker/releases/20260918T082921Z`. `/opt/poker/current` changed atomically
+  after public acceptance and test-room closure verification at
+  `2026-09-18T15:10:08Z`.
+- Built from an isolated source snapshot with no detected source drift before
+  final documentation updates. The allowlisted archive contained 90 files and
+  588,446 bytes; SHA-256:
+  `b95d7cf191e98874394e7a27cf3bf234e86c8136bfe1ece5e3cae441e90bf80a`.
+  Archive and packaged file hashes were checked before the server build.
+  Post-acceptance documentation is synchronized separately from the immutable
+  application snapshot.
+- New image:
+  `sha256:d87bc9f7be2334c613a6d7449f6c0100dc286b254be3bc63660316e2856621a6`.
+  Only the app was recreated, starting at `2026-09-18T15:02:19.48653504Z`.
+  Database and Y2P container IDs, images and start times were unchanged.
+  Database mount comparison was normalized by destination because Docker
+  returned the same mounts in a different list order; the DB was not recreated.
+- Backup: `/opt/poker/shared/backups/poker-20260918T145838Z.dump`, 102,181 bytes,
+  mode 600, validated with `pg_restore --list` before activation. No restore.
+- Rollback image: `river-room-app:rollback-20260918T145838Z`, retaining
+  `sha256:385e3633937e632785be308a6524a9c37d42a8943c815bca2d974a9da9f060ef`.
+  Assess compatibility with newly persisted settlement presentation state before
+  rollback; retain the current network/socket/proxy-trust contract and do not
+  restore the database automatically.
+- Before activation: three open rooms, two started, zero online players.
+  After test cleanup: the same open/started counts remain. Original rooms were
+  not closed. App replacement interrupted connections; started rooms recover
+  paused until their owners continue.
+
+Acceptance evidence:
+
+- Isolated snapshot: 160 backend tests and the production build passed.
+- All 57 public Playwright cases passed in 5.0 minutes, with exit code 0,
+  including successful teardown. Real scenarios covered multiplayer rooms,
+  recovery, showdown, squid payment and double-runout settlement. The added
+  live settlement case verified first-result presentation without premature
+  payment or future-board disclosure, and reveal after presentation.
+- Dedicated public smoke verified HTTPS, WSS, identity-preserving reload and
+  Secure/HttpOnly cookies. Fixture-driven presentation cases establish deployed
+  frontend rendering/interaction, not every live server game outcome.
+- All 21 run-created rooms were closed through owner APIs, then a scoped
+  read-only database query confirmed 21/21 have `closed_at`.
+- Public health returned `{"ok":true}` and `Cache-Control: no-store`; public HTML
+  and assets matched the staged build with normal TLS validation.
+- Public JS `index-6N2d5Lcf.js` SHA-256:
+  `09d41aebf6348f6f6077eb13a12f6339d89cea91dc03db61349f9a17424f2dcb`.
+- Public CSS `index-lEgGXydA.css` SHA-256:
+  `1e27775829c912df2735074f4a283e23dbda2216ae891f85f6e891b066504093`.
+- Inspected this run's desktop pot-transfer and 390px departed-player payment
+  captures. Timing and balance transitions were checked by browser assertions;
+  static animation captures alone do not establish those transitions.
+- App/DB healthy, socket SQL query passed, one Uvicorn process, host networking,
+  restart policies, mounts, listeners and unpublished ports preserved. No app
+  error/traceback/critical log lines were found at finalization. Nginx/UFW hashes,
+  routes, firewall, Docker NAT, FRP and Y2P matched the baseline.
+- Acceptance verifies the public hostname through existing Nginx; it does not
+  assert Cloudflare proxying or re-test direct-IP firewall behavior.
+
+Workstation evidence: `artifacts/deploy-20260918T145838Z/`, including source and
+package manifests, backend/build logs, `public-browser-result.json`,
+`public-cleanup.json`, `smoke.json`, `live-settlement.json`, `public-assets.json`,
+`operational-verification.json`, `final-state.json`, `finalized.json` and
+`public-captures/`. Server records under `/opt/poker/shared/` include
+`build-20260918T145838Z.log`, `activation-20260918T145838Z.json`,
+`verified-20260918T145838Z.json`, rollback metadata and backup/listing.
+The run-owned remote transfer archive was removed.
+
 ## Release 20260918T082921Z
 
 - Application source: `05019f6f28270be02171d515e045887ed3047592`, committed and pushed to `origin/main`
