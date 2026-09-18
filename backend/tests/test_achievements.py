@@ -142,11 +142,16 @@ def test_incomplete_history_uses_explicit_contiguous_start(monkeypatch):
     assert room['players'][ids[2]]['achievements']['busts'] == 2
 
 
-def test_live_corrupt_result_fails_instead_of_resetting_counts(monkeypatch):
-    room, _, _ = allin_table(monkeypatch)
+def test_live_corrupt_result_is_pending_without_resetting_counts(monkeypatch):
+    room, ids, _ = allin_table(monkeypatch)
     broken = dict(room['hand'], number=2, awards=[])
     with pytest.raises(ValueError, match='Missing main pot'):
-        achievements.record(room, broken)
+        achievements.main_winner(broken)
+    achievements.record(room, broken)
+    assert room['achievement_pending'] == dict(wins=[2], busts=[])
+    assert room['players'][ids[0]]['achievements']['wins'] == 1
+    assert room['players'][ids[2]]['achievements']['busts'] == 2
+    assert room['achievement_hand'] == 2
     assert room['achievement_since'] == dict(wins=1, busts=1)
 
 

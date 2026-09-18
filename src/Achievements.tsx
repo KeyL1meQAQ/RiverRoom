@@ -28,18 +28,22 @@ export function AchievementBadges({ player }: { player: Player }) {
   </span>;
 }
 
-export function AchievementDetails({ player, since }: { player: Player; since: Room['achievement_since'] }) {
+export function AchievementDetails({ player, since, pending }: {
+  player: Player; since: Room['achievement_since']; pending: Room['achievement_pending'];
+}) {
   const { wins = 0, busts = 0 } = player.achievements || {};
   return <section className="achievement-details" aria-label="玩家成就">
     <div className="achievement-detail wins">
       <div><span>赢池</span><strong>{count(wins)} 次</strong></div>
-      <p>独赢主池计一次，对手全部弃牌也计。发两次牌须独赢两组主池；平分、仅赢边池不计。</p>
+      <p>独赢主池计一次，对手全部弃牌也计，包括投入全部退回的零底池手。发两次牌须独赢两组主池；平分、仅赢边池不计。</p>
       {since?.wins > 1 && <small>从第 {count(since.wins)} 手起统计，更早记录不完整。</small>}
+      {!!pending?.wins && <small>部分手牌待补算，当前显示已核实次数。</small>}
     </div>
     <div className="achievement-detail busts">
       <div><span>被清台</span><strong>{count(busts)} 次</strong></div>
       <p>全部底池结算后、补码前筹码归零计一次。全下暂时归零或主动离座不计。</p>
       {since?.busts > 1 && <small>从第 {count(since.busts)} 手起统计，更早记录不完整。</small>}
+      {!!pending?.busts && <small>部分手牌待补算，当前显示已核实次数。</small>}
     </div>
     <p className="achievement-scope">当前房间累计 · 离座再入座与召回后保留</p>
   </section>;

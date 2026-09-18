@@ -50,6 +50,14 @@ test('badge counts stay integrated, update live, and explain exact totals and pa
   await expect(details).toContainText('从第 3 手起统计');
   await expect(details).toContainText('独赢两组主池');
   await expect(details).toContainText('补码前筹码归零');
+  state.achievement_pending = { wins: 1, busts: 0 };
+  push(state);
+  await expect(details.locator('.wins')).toContainText('部分手牌待补算');
+  await expect(details.locator('.busts')).not.toContainText('待补算');
+  await expect(details.locator('.wins strong')).toHaveText('123,456 次');
+  state.achievement_pending.wins = 0;
+  push(state);
+  await expect(details).not.toContainText('待补算');
   await expect(page.locator('.personal-actions').getByRole('button', { name: '补码' })).toBeVisible();
   me.achievements.wins = 123457;
   push(state);

@@ -43,6 +43,7 @@ class Service:
             old = room['version']
             migrated = game.migrate_reveals(room)
             migrated = achievements.migrate(room) or migrated
+            migrated = achievements.retry_pending(room) or migrated
             if room['closed_at']:
                 if migrated:
                     room['version'] += 1

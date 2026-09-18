@@ -533,7 +533,7 @@ const mobilePositions = [
 ];
 
 function potTitle(group: PotResult, hand: Hand) {
-  return `${hand.boards.length > 1 ? `第 ${group.board + 1} 次 · ` : ""}${group.pot ? `边池 ${group.pot}` : "主池"}${group.winners.length > 1 ? " · 平分" : ""}`;
+  return `${hand.boards.length > 1 ? `第 ${group.board + 1} 组 · ` : ""}${group.pot ? `边池 ${group.pot}` : "主池"}${group.winners.length > 1 ? " · 平分" : ""}`;
 }
 
 function WinningHands({ group, hand }: { group: PotResult; hand: Hand }) {
@@ -544,13 +544,51 @@ function WinningHands({ group, hand }: { group: PotResult; hand: Hand }) {
           {hand.result?.find(p => p.pid === winner.pid)?.name}
         </span>
         <strong>{winner.label}</strong>
-        <span>+{n(winner.amount)}</span>
+        <span>获池金额 +{n(winner.amount)}</span>
       </div>
       <div className="winning-five" aria-label={`${winner.label}的五张牌`}>
         {winner.cards.map(card => <Card key={card} code={card} small />)}
       </div>
     </div>)}
   </div>;
+}
+
+function ResultScrollHint({ room, now }: { room: Room; now: number }) {
+  const [outside, setOutside] = useState(false);
+  const showingHandSeats = !!room.hand?.result && now < room.hand.reveal_until;
+  const target = useRef<HTMLElement | null>(null);
+  const container = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const root = document.querySelector<HTMLElement>('.room-main');
+    const seat = document.querySelector<HTMLElement>('.own-seat .occupied');
+    const participates = room.hand?.result?.some(result => result.pid === room.me);
+    if (!root || !seat || !participates) { setOutside(false); return; }
+    target.current = seat;
+    container.current = root;
+    const update = () => {
+      const bounds = root.getBoundingClientRect();
+      const result = seat.getBoundingClientRect();
+      setOutside(window.matchMedia('(max-width: 760px)').matches &&
+        (result.top < bounds.top || result.bottom > bounds.bottom));
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(root);
+    observer.observe(root.querySelector('.table-stage')!);
+    observer.observe(seat);
+    root.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    update();
+    return () => {
+      observer.disconnect(); root.removeEventListener('scroll', update); window.removeEventListener('resize', update);
+    };
+  }, [room, showingHandSeats]);
+  return <button className="result-scroll-hint" hidden={!outside} onClick={() => {
+    const root = container.current, seat = target.current;
+    if (!root || !seat) return;
+    const bounds = root.getBoundingClientRect(), result = seat.getBoundingClientRect();
+    root.scrollBy({ top: result.bottom > bounds.bottom ? result.bottom - bounds.bottom + 8 : result.top - bounds.top - 8,
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+  }}>查看我的结果 <ChevronDown size={12} /></button>;
 }
 
 function PokerTable({
@@ -574,7 +612,8 @@ function PokerTable({
 }) {
   const me = room.players.find((p) => p.id === room.me)!;
   const hand = room.hand;
-  const showingResult = !!(hand?.result && now < hand.reveal_until);
+  const showingResult = !!hand?.result;
+  const showingHandSeats = showingResult && now < hand!.reveal_until;
   const { boards, animated } = useBoardPresentation(hand, now, connection, sound);
   const groups = hand?.result ? hand.showdown_results || [] : [];
   const mainGroups = groups.filter(group => group.pot === 0);
@@ -587,7 +626,7 @@ function PokerTable({
     resultBaseline.current.animateUntil = now + .3;
   }
   const animateWin = now < resultBaseline.current.animateUntil;
-  const ownSeat = (showingResult ? hand!.seats[hand!.ids.indexOf(me.id)] : undefined) ?? me.seat ?? 0;
+  const ownSeat = (showingHandSeats ? hand!.seats[hand!.ids.indexOf(me.id)] : undefined) ?? me.seat ?? 0;
   const playing = hand && hand.result === null;
   const countdown = Math.max(0, Math.ceil((room.deadline || 0) - now));
   return (
@@ -653,7 +692,7 @@ function PokerTable({
                   : room.phase === "rebuy"
                     ? `等待重买入 · ${countdown}s`
                     : room.paused
-                      ? "本手结束后暂停"
+                      ? playing ? "本手结束后暂停" : "后续发牌已暂停"
                       : room.phase === "waiting"
                         ? room.started
                           ? "等待玩家入座"
@@ -666,10 +705,10 @@ function PokerTable({
         </div>
       </div>
       {Array.from({ length: 9 }, (_, seat) => {
-        const handPlayer = showingResult ? hand!.ids[hand!.seats.indexOf(seat)] : undefined;
+        const handPlayer = showingHandSeats ? hand!.ids[hand!.seats.indexOf(seat)] : undefined;
         const p = handPlayer
           ? room.players.find((p) => p.id === handPlayer)
-          : room.players.find((p) => p.seat === seat && !(showingResult && hand!.ids.includes(p.id)));
+          : room.players.find((p) => p.seat === seat && !(showingHandSeats && hand!.ids.includes(p.id)));
         const position = (seat - ownSeat + 9) % 9;
         const [x, y] = desktopPositions[position],
           [mx, my] = mobilePositions[position];
@@ -696,8 +735,8 @@ function PokerTable({
           : [];
         const displayedLabels = labels?.length ? labels : ownLabels;
         const payout = p && showingResult ? hand?.result?.find(result => result.pid === p.id)?.won || 0 : 0;
-        const mainWinner = p && showingResult && hand?.awards.some(award => award.pot === 0 &&
-          (award.winners?.includes(hand.ids.indexOf(p.id)) || award.amounts[hand.ids.indexOf(p.id)] > 0));
+        const mainWinner = p && showingResult && (hand?.uncontested_winner === p.id || hand?.awards.some(award => award.pot === 0 &&
+          (award.winners?.includes(hand.ids.indexOf(p.id)) || award.amounts[hand.ids.indexOf(p.id)] > 0)));
         const winningHoles = new Set(mainGroups.flatMap(group => group.winners.filter(w => w.pid === p?.id).flatMap(w => w.cards)));
         const status = p && showingResult && p.seat === null
           ? "已离座"
@@ -754,7 +793,7 @@ function PokerTable({
                   {displayedLabels.map((label, board) => {
                     const boardWinner = mainGroups.some(group => group.board === board && group.winners.some(w => w.pid === p.id));
                     return <span className={boardWinner ? "won-main" : ""} key={board} data-board={board}
-                      title={`${displayedLabels.length > 1 ? `第 ${board + 1} 次：` : ""}${label}`}>
+                      title={`${displayedLabels.length > 1 ? `第 ${board + 1} 组：` : ""}${label}`}>
                       {displayedLabels.length > 1 && <small>{board === 0 ? "①" : "②"}</small>}{label}
                     </span>;
                   })}
@@ -1201,6 +1240,7 @@ function RoomScreen({
                   ? "后续发牌已暂停"
                   : phases[room.phase]}
             </span>
+            <ResultScrollHint room={room} now={now} />
             <span className="toolbar-spacer" />
             {owner && (
               <>
@@ -1437,6 +1477,7 @@ function RoomScreen({
                           <Card key={i} code={c} small />
                         ))}
                       </div>
+                      <p className="history-result-heading">本手净输赢</p>
                       {h.result?.map((p) => (
                         <div className="history-player" key={p.pid}>
                           <span>{p.name}</span>
@@ -1450,6 +1491,12 @@ function RoomScreen({
                           </b>
                         </div>
                       ))}
+                      {h.uncontested_winner && <p className="history-log">无人形成底池，投入已退回；
+                        {h.result?.find(p => p.pid === h.uncontested_winner)?.name} 获胜。</p>}
+                      {h.pots?.map((pot, index) => <div className="history-pot-definition" key={index}>
+                        <b>{index ? `边池 ${index}` : '主池'} · {n(pot.amount)}</b>
+                        <span>争夺资格：{pot.eligible.map(pid => h.result?.find(p => p.pid === pid)?.name || '玩家').join('、')}</span>
+                      </div>)}
                       {h.showdown_results?.map((group, index) => <div className="history-pot-result" key={index}>
                         <h3>{potTitle(group, h)}</h3>
                         <WinningHands group={group} hand={h} />
@@ -2058,7 +2105,7 @@ function RoomScreen({
               </b>
             </span>
           </div>
-          <AchievementDetails player={target} since={room.achievement_since} />
+          <AchievementDetails player={target} since={room.achievement_since} pending={room.achievement_pending} />
           {target.id === me.id && me.seat !== null && <div className="modal-actions personal-actions">
             <button className="secondary" disabled={busy || !!room.closed_at || (me.away && me.stack === 0)}
               onClick={() => send({ type: "away", value: !me.away }, true)}>

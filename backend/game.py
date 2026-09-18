@@ -261,7 +261,7 @@ def finish_hand(room, state, now):
         for i, amount in enumerate(award['amounts']):
             payouts[i] += amount
         details = '、'.join(f"{room['players'][hand['ids'][i]]['name']} +{a}" for i, a in enumerate(award['amounts']) if a)
-        suffix = '' if award['board'] is None else f" · 第 {award['board'] + 1} 次"
+        suffix = '' if len(hand.get('boards', [])) <= 1 or award['board'] is None else f" · 第 {award['board'] + 1} 组"
         log(room, f"{'主池' if award['pot'] == 0 else '边池 ' + str(award['pot'])}{suffix}：{details}", now)
     # PokerKit may use board=None after killing losing hands, even at showdown.
     # Preserve its showdown order before that cleanup, then reveal through the
@@ -285,6 +285,10 @@ def finish_hand(room, state, now):
     hand['showdown_results'] = hands.showdown_results(hand)
     hand['finished_at'] = now
     hand['reveal_until'] = now + 5
+    if not hand['awards']:
+        hand['uncontested_winner'] = achievements.zero_pot_winner(hand)
+        log(room, f"{room['players'][hand['uncontested_winner']]['name']} 获胜 · 无人形成底池，投入已退回", now)
+    achievements.retry_pending(room)
     achievements.record(room, hand)
     room['history'].append(copy.deepcopy(hand))
     for p in room['players'].values():
@@ -626,6 +630,8 @@ def public_hand(hand, viewer, include_hint=False):
         shown_cards={pid: shown_indices(hand, pid) for pid in hand['dealt'] if shown_indices(hand, pid)},
         reveal_until=reveal_deadline(hand), deal=hand.get('deal'),
         showdown_results=hand.get('showdown_results', []),
+        pots=copy.deepcopy(hand.get('pots', [])),
+        uncontested_winner=hand.get('uncontested_winner'),
         public_hand_labels=hands.public_labels(hand),
         **({'own_hand_labels': hands.own_labels(hand, viewer)} if include_hint else {}),
         result=hand['result'], awards=hand['awards'], votes=hand['votes'], voters=hand.get('voters', []),
@@ -652,6 +658,7 @@ def view(room, viewer, now):
     result = {k: copy.deepcopy(room[k]) for k in ('id', 'name', 'settings', 'owner', 'phase', 'deadline',
               'button', 'small_blind', 'big_blind', 'number', 'started', 'paused', 'recovery', 'closing', 'closed_at', 'version')}
     result.update(me=viewer, players=players, achievement_since=room['achievement_since'].copy(),
+        achievement_pending={metric: len(numbers) for metric, numbers in room.get('achievement_pending', {}).items()},
         hand=public_hand(hand, viewer, include_hint=True), server_time=now,
         requests=[r for r in room['requests'] if viewer == room['owner'] or r['pid'] == viewer],
         logs=room['logs'][-500:], ledger=room['ledger'], history=[public_hand(h, viewer) for h in room['history'][-100:]],

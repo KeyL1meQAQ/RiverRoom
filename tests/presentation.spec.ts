@@ -39,6 +39,88 @@ async function mount(page: Page, name: string | Room) {
   });
 }
 
+test('settled results survive the reveal deadline, reload, and the next straddle offer', async ({ page }) => {
+  const state = structuredClone(fixtures.twice);
+  state.phase = 'between'; state.paused = true; state.rebuy = [];
+  state.hand!.reveal_until = state.server_time - 1;
+  const push = await mount(page, state);
+  const payoutCount = state.hand!.result!.filter(p => p.won > 0).length;
+  await expect(page.locator('.seat-payout')).toHaveCount(payoutCount);
+  await expect(page.locator('.winning-seat')).not.toHaveCount(0);
+  await expect(page.locator('.table-status')).toHaveText('后续发牌已暂停');
+  await expect(page.locator('.reveal-card')).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('.seat-payout')).toHaveCount(payoutCount);
+  state.phase = 'straddle'; state.straddle = state.me; state.deadline = state.server_time + 5;
+  push(state);
+  await expect(page.locator('.table-status')).toContainText('UTG 选择 Straddle');
+  await expect(page.locator('.seat-payout')).toHaveCount(payoutCount);
+  push('preflop');
+  await expect(page.locator('.seat-payout')).toHaveCount(0);
+  await expect(page.locator('.winning-seat')).toHaveCount(0);
+});
+
+test('expired result seats use current occupants and never give a newcomer old cards or winnings', async ({ page }) => {
+  const state = structuredClone(fixtures.twice);
+  state.hand!.reveal_until = state.server_time - 1;
+  const leaving = state.players.find(p => state.hand!.result!.some(r => r.pid === p.id && r.won > 0) && p.id !== state.me)!;
+  const oldSeat = leaving.seat;
+  leaving.seat = null;
+  const newcomer = structuredClone(leaving);
+  Object.assign(newcomer, { id: 'newcomer', name: '新入座玩家', seat: oldSeat, cards: [], achievements: { wins: 0, busts: 0 } });
+  state.players.push(newcomer);
+  const push = await mount(page, state);
+  const seat = page.getByRole('button', { name: `新入座玩家，筹码 ${newcomer.stack}`, exact: true });
+  await expect(seat).toBeVisible();
+  await expect(seat).not.toHaveClass(/winning-seat/);
+  await expect(seat.locator('..').locator('.playing-card, .seat-payout, .seat-hand-label')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: `${leaving.name}，筹码 ${leaving.stack}`, exact: true })).toHaveCount(0);
+  const me = state.players.find(p => p.id === state.me)!;
+  me.seat = 7;
+  push(state);
+  await expect(page.locator('.own-seat')).toHaveClass(/position-0/);
+  await expect(page.locator('.own-seat .seat-hand-label')).toBeVisible();
+});
+
+test('mobile result location is opt-in and preserves readable results after the reveal window', async ({ page }) => {
+  const state = structuredClone(fixtures.nine_twice);
+  state.hand!.reveal_until = state.server_time - 1;
+  await page.setViewportSize({ width: 320, height: 568 });
+  await mount(page, state);
+  const main = page.locator('.room-main');
+  const before = await main.evaluate(el => el.scrollTop);
+  const hint = page.getByRole('button', { name: '查看我的结果' });
+  await expect(hint).toBeVisible();
+  expect(await main.evaluate(el => el.scrollTop)).toBe(before);
+  await hint.click();
+  await expect(hint).toBeHidden();
+  await expect.poll(() => main.evaluate(el => el.scrollTop)).toBeGreaterThan(before);
+  const seat = await page.locator('.own-seat .occupied').boundingBox();
+  const controls = await page.locator('.action-bar').boundingBox();
+  expect(seat!.y + seat!.height).toBeLessThanOrEqual(controls!.y);
+  await expect(page.locator('.own-seat .seat-hand-label')).toBeInViewport();
+  await page.screenshot({ path: 'artifacts/remediation-result-320.png', fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await expect(hint).toBeHidden();
+});
+
+test('history separates net result from pot receipts and shows stable pot eligibility', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = structuredClone(fixtures.twice);
+  state.hand!.reveal_until = state.server_time - 1;
+  await mount(page, state);
+  await page.getByRole('button', { name: '日志和统计', exact: true }).click();
+  await page.getByRole('button', { name: '手牌', exact: true }).click();
+  await page.locator('.history-toggle').click();
+  await expect(page.locator('.history-result-heading')).toHaveText('本手净输赢');
+  await expect(page.locator('.history-pot-definition')).toHaveCount(state.hand!.pots!.length);
+  await expect(page.locator('.history-pot-definition').first()).toContainText('争夺资格');
+  await expect(page.locator('.history-pot-result').first()).toContainText('第 1 组');
+  await expect(page.locator('.winning-hand-heading').first()).toContainText('获池金额');
+  await page.screenshot({ path: 'artifacts/remediation-history-390.png', fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+});
+
 test('table actions and full street amounts fit nine seats at desktop and mobile sizes', async ({ page }) => {
   const push = await mount(page, 'table_actions');
   const labels = page.locator('.seat-bet .bet-action');
@@ -567,7 +649,10 @@ test('settlement raises whole winning cards once and dims only visible non-winni
   const expired = structuredClone(result);
   expired.hand!.reveal_until = expired.server_time - 1;
   push(expired);
-  await expect(page.locator('.table-stage')).not.toHaveClass(/showing-result/);
+  await expect(page.locator('.table-stage')).toHaveClass(/showing-result/);
+  await expect(page.locator('.seat-payout').first()).toBeVisible();
+  await expect(page.locator('.winning-seat').first()).toBeVisible();
+  await expect(page.locator('.reveal-card')).toHaveCount(0);
   await expect(winners).toHaveCount(count);
   expect(await page.evaluate(() => (window as any).winningAnimations)).toBe(count);
   await page.reload();

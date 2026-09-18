@@ -166,3 +166,12 @@
 - 修正：交叠改为四分之一；后牌字符外移牌宽的八分之一；底牌整体上移 2px、字符上移 1px。牌面尺寸及字号保持，手机底牌仍位于玩家框上方并交叠摆放。
 - `npm run build` 与 `git diff --check` 通过；构建结束后运行 `BASE_URL=http://localhost:5179 npx playwright test tests/presentation.spec.ts`，16 项通过，约 20.0 秒。覆盖 320/360/390/760px 字符可见性及独立亮牌点击，并回归既有九座、双公共牌、主边池、动画和金额布局。
 - 已查看本轮新截图 `artifacts/ui-20260917-suits-mobile-fixed.png`，确认手机点数及花色完整显示；此轮仅修改界面样式，未重新运行后端测试；本节记录本地验收，不代表线上部署。
+
+## 九人实测报告修复（2026-09-18）
+
+- `npm run build` 和 `git diff --check` 通过。
+- `.venv/bin/python -m pytest backend/tests -q`：100 项通过；新增专项 14 项覆盖合法零底池赢池加一、新旧手恢复关房、分池独立奇数拆分、末次平分余数收筹码、Straddle 完整加注与短全下重开、旧手规则重放、成就有限补算及事务回滚。依赖弃用及固定牌局弃牌提示共 3 条，无失败。
+- `BASE_URL=http://127.0.0.1:8028 npm run test:e2e`：39 项通过，50.9 秒。采用本地生产构建、Uvicorn 和独立 SQLite `/tmp/river-room-remediation-20260918.db`，没有操作线上房间。
+- 浏览器新增验证：结算信息超过亮牌期限及刷新后保留，下一手 Straddle 询问保留、实际发牌清除；离座、新人占同席和本人换席不串用结果；320px 点击定位本人结果且不自动滚动；历史净输赢、获池金额与原池资格；成就待补算提示独立显隐。既有实际亮牌/隐私、九座多尺寸布局、身份召回和复制回归通过。
+- 已查看 `artifacts/remediation-result-320.png` 与 `artifacts/remediation-history-390.png`。完整设计、修复与证据边界见 `docs/river-room-remediation-2026-09-18.md`。
+- 尚未部署，两个线上故障测试房尚未结清；本地回归不能替代上线后的实际收尾验收。测试机性能问题按用户要求排除。

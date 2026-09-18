@@ -3512,3 +3512,15 @@ dialog::backdrop {
   .table-stage.showing-result:has(.achievement-badges) .position-4,
   .table-stage.showing-result:has(.achievement-badges) .position-5 { top: 6%; }
 }
+
+.result-scroll-hint { display: none; }
+.history-result-heading { color: #637166; font-size: 11px; margin: 12px 0 4px; }
+.history-pot-definition { display: grid; gap: 4px; padding: 8px 0; font-size: 11px; overflow-wrap: anywhere; }
+.history-pot-definition span { color: #637166; }
+@media (max-width: 760px) {
+  .result-scroll-hint:not([hidden]) {
+    display: inline-flex; align-items: center; gap: 2px; margin-left: 6px;
+    border: 0; padding: 2px 4px; background: transparent; color: #286040;
+    font-size: 10px; white-space: nowrap;
+  }
+}

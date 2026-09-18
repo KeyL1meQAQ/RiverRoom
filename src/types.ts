@@ -46,6 +46,8 @@ export type Hand = {
   own_hand_labels?: string[][];
   public_hand_labels?: Record<string, string[]>;
   showdown_results?: PotResult[];
+  pots?: { amount: number; eligible: string[] }[];
+  uncontested_winner?: string | null;
   cards: Record<string, (string | null)[]>;
   revealed: string[];
   shown_cards: Record<string, number[]>;
@@ -99,6 +101,7 @@ export type Room = {
   me: string;
   players: Player[];
   achievement_since: { wins: number; busts: number };
+  achievement_pending?: { wins: number; busts: number };
   hand: Hand | null;
   server_time: number;
   requests: JoinRequest[];

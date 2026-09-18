@@ -4,19 +4,23 @@ import logging
 from . import engine
 
 logger = logging.getLogger('river')
-VERSION = 1
+VERSION = 2
 METRICS = ('wins', 'busts')
+RETRY_LIMIT = 8
 
 
 def initialize(room):
     room.update(achievement_version=VERSION, achievement_hand=0,
-                achievement_since={metric: 1 for metric in METRICS})
+                achievement_since={metric: 1 for metric in METRICS},
+                achievement_pending={metric: [] for metric in METRICS})
     for player in room['players'].values():
         player['achievements'] = dict(wins=0, busts=0)
 
 
 def main_winner(hand):
     awards = hand['awards']
+    if not awards:
+        return zero_pot_winner(hand)
     if any('winners' not in award for award in awards):
         # Legacy amounts alone cannot distinguish a tie with zero-chip winners.
         replay = dict(hand, ops=[])
@@ -62,6 +66,21 @@ def main_winner(hand):
     return winners[0] if winners[0] is not None and all(w == winners[0] for w in winners) else None
 
 
+def zero_pot_winner(hand):
+    """An empty award list is valid only for a completed, uncalled blind return."""
+    results = hand.get('result') or []
+    if (hand.get('awards') != [] or len(results) != len(hand['ids'])
+            or {r['pid'] for r in results} != set(hand['ids'])
+            or any(type(r.get(key)) is not int or r[key] != 0
+                   for r in results for key in ('won', 'delta'))):
+        raise ValueError('Missing main pot')
+    state = engine.state_for(hand)
+    remaining = set(hand['ids']) - set(engine.folded_players(hand, state))
+    if state.status or state.stacks != hand['initial'] or state.total_pot_amount or len(remaining) != 1:
+        raise ValueError('Invalid zero-pot settlement')
+    return remaining.pop()
+
+
 def busted_players(hand):
     results = {result['pid']: result['delta'] for result in hand['result']}
     ids, initial = hand['ids'], hand['initial']
@@ -88,7 +107,7 @@ def record(room, hand, historical=False):
     number = hand['number']
     if hand.get('result') is None or number <= room['achievement_hand']:
         return
-    if number != room['achievement_hand'] + 1:
+    if historical and number != room['achievement_hand'] + 1:
         for metric in METRICS:
             reset_metric(room, metric, number)
     for metric, compute in [('wins', lambda h: [main_winner(h)]), ('busts', busted_players)]:
@@ -97,11 +116,13 @@ def record(room, hand, historical=False):
             if any(pid is not None and pid not in room['players'] for pid in recipients):
                 raise ValueError('Missing participant')
         except Exception:
-            if not historical:
-                raise
-            # One incomplete historical metric must not discard the other one.
-            logger.warning('Cannot reconstruct %s for room %s hand %s', metric, room['id'], number)
-            reset_metric(room, metric, number + 1)
+            logger.warning('Cannot compute %s for room %s hand %s', metric, room['id'], number)
+            if historical:
+                # Preserve the existing legacy-history policy for data that
+                # predates tracked gaps; live failures never reset prior wins.
+                reset_metric(room, metric, number + 1)
+            else:
+                room['achievement_pending'][metric].append(number)
             continue
         for pid in recipients:
             if pid is not None:
@@ -109,9 +130,46 @@ def record(room, hand, historical=False):
     room['achievement_hand'] = number
 
 
+def retry_pending(room):
+    """Bounded, per-metric retries at settlement/startup, never on every tick."""
+    pending = room['achievement_pending']
+    if not any(pending.values()):
+        return False
+    completed = {h['number']: h for h in room['history'] if h.get('result') is not None}
+    current = room.get('hand')
+    if current and current.get('result') is not None:
+        completed.setdefault(current['number'], current)
+    changed = False
+    for metric, compute in [('wins', lambda h: [main_winner(h)]), ('busts', busted_players)]:
+        # Rotate failures so a damaged early record cannot starve later gaps.
+        attempts = pending[metric][:RETRY_LIMIT]
+        for number in attempts:
+            try:
+                recipients = compute(completed[number])
+                if any(pid is not None and pid not in room['players'] for pid in recipients):
+                    raise ValueError('Missing participant')
+            except Exception:
+                recipients = None
+            pending[metric].remove(number)
+            if recipients is None:
+                pending[metric].append(number)
+                continue
+            for pid in recipients:
+                if pid is not None:
+                    room['players'][pid]['achievements'][metric] += 1
+            changed = True
+        changed = changed or pending[metric][:len(attempts)] != attempts
+    return changed
+
+
 def migrate(room):
     if room.get('achievement_version') == VERSION:
         return False
+    if room.get('achievement_version') == 1:
+        # Existing verified counters and their explicit start dates remain valid.
+        room.update(achievement_version=VERSION,
+                    achievement_pending={metric: [] for metric in METRICS})
+        return True
     initialize(room)
     # The latest completed hand also appears in history; count it only once.
     completed = {hand['number']: hand for hand in room['history'] if hand.get('result') is not None}

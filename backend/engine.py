@@ -1,16 +1,92 @@
 """PokerKit adapter: deterministic replay and room-specific split-pot policy."""
 from collections import deque
+from dataclasses import dataclass, field, replace
 import secrets
 
-from pokerkit import Automation, Card, Deck, Folding, Mode, NoLimitTexasHoldem
+from pokerkit import Automation, Card, ChipsPushing, Deck, Folding, Mode, NoLimitTexasHoldem, Pot, State
 
 AUTOMATIONS = (Automation.ANTE_POSTING, Automation.BLIND_OR_STRADDLE_POSTING, Automation.BET_COLLECTION)
+RULES_VERSION = 2
+
+
+@dataclass
+class RiverState(State):
+    """Room rules for new hands, against the pinned PokerKit 0.7.5 hooks.
+
+    Freeze after the last bet collection/uncalled return, before showdown can
+    kill losing hands and merge pots. Replay reaches these same hooks naturally.
+    """
+    original_pots: tuple | None = field(default=None, init=False)
+
+    def _freeze_pots(self):
+        if self.original_pots is None:
+            self.original_pots = tuple((p.raked_amount, p.unraked_amount, p.player_indices)
+                                       for p in super().pots)
+
+    @property
+    def pots(self):
+        if self.original_pots is None or self._pots is not None:
+            yield from super().pots
+        else:
+            for raked, amount, eligible in self.original_pots:
+                yield Pot(raked, amount, tuple(i for i in eligible if self.statuses[i]))
+
+    def _begin_showdown(self):
+        self._freeze_pots()
+        super()._begin_showdown()
+
+    def _begin_chips_pushing(self):
+        self._freeze_pots()  # Folding wins skip showdown entirely.
+        super()._begin_chips_pushing()
+        if sum(self.statuses) > 1 and self._sub_pots:
+            # PokerKit skips zero-sized board shares. They still have winners
+            # (including ties), needed for correct achievements and highlights.
+            for i, pot in enumerate(self._pots):
+                q, rem = divmod(pot.unraked_amount, self.board_count)
+                for board in self.board_indices:
+                    if q + (rem if board == 0 else 0) == 0:
+                        self._sub_pots.append((0, i, board, 0))
+            self._sub_pots.sort(key=lambda part: (part[1], part[2]))
+
+    def _begin_betting(self):
+        super()._begin_betting()
+        if self.street_index == 0 and self.actor_index is not None:
+            self.completion_betting_or_raising_amount = max(
+                self.streets[0].min_completion_betting_or_raising_amount,
+                *self.blinds_or_straddles)
+
+    def _update_chips_pushing(self, operation=None):
+        if isinstance(operation, ChipsPushing) and operation.board_index is not None:
+            winners = pot_winners(self, operation.pot_index, operation.board_index)
+            q, rem = divmod(sum(operation.amounts), len(winners))
+            corrected = [0] * self.player_count
+            for rank, i in enumerate(winners):
+                corrected[i] = q + (rank < rem)
+            for i, amount in enumerate(corrected):
+                self.bets[i] += amount - operation.amounts[i]
+            operation = replace(operation, amounts=tuple(corrected))
+        # Correct before PokerKit builds pull eligibility on the last push.
+        super()._update_chips_pushing(operation)
+
+    def push_chips(self, **kwargs):
+        super().push_chips(**kwargs)
+        operation = self.operations[-1]
+        # The adapter deliberately does not automate pushing or pulling.
+        assert isinstance(operation, ChipsPushing)
+        return operation
+
+
+def pot_winners(state, pot, board):
+    hands = list(state.get_up_hands(board, 0))
+    eligible = [i for i in list(state.pots)[pot].player_indices if hands[i] is not None]
+    best = max((hands[i] for i in eligible), default=None)
+    return [i for i in eligible if hands[i] == best] if best else []
 
 
 def new_hand(ids, seats, stacks, blinds, big_blind, number):
     deck = list(Deck.STANDARD)
     secrets.SystemRandom().shuffle(deck)
-    return dict(number=number, ids=ids, seats=seats, initial=stacks, blinds=blinds,
+    return dict(number=number, rules_version=RULES_VERSION, ids=ids, seats=seats, initial=stacks, blinds=blinds,
                 big_blind=big_blind, deck=[repr(c) for c in deck], ops=[], dealt={},
                 revealed=[], shown_cards={}, showdown_order=[], reveal_version=1,
                 votes={}, runouts=None, awards=[], result=None,
@@ -18,8 +94,18 @@ def new_hand(ids, seats, stacks, blinds, big_blind, number):
 
 
 def state_for(hand):
-    state = NoLimitTexasHoldem.create_state(AUTOMATIONS, True, 0, hand['blinds'],
-        hand['big_blind'], hand['initial'], len(hand['ids']), mode=Mode.CASH_GAME)
+    version = hand.get('rules_version', 1)
+    if version == 1:
+        state = NoLimitTexasHoldem.create_state(AUTOMATIONS, True, 0, hand['blinds'],
+            hand['big_blind'], hand['initial'], len(hand['ids']), mode=Mode.CASH_GAME)
+    elif version == RULES_VERSION:
+        game = NoLimitTexasHoldem(AUTOMATIONS, True, 0, hand['blinds'], hand['big_blind'], mode=Mode.CASH_GAME)
+        state = RiverState(game.automations, game.deck, game.hand_types, game.streets,
+            game.betting_structure, game.ante_trimming_status, game.raw_antes,
+            game.raw_blinds_or_straddles, game.bring_in, hand['initial'], len(hand['ids']),
+            mode=game.mode, starting_board_count=game.starting_board_count, divmod=game.divmod, rake=game.rake)
+    else:
+        raise ValueError('Unsupported hand rules version')
     state.deck_cards = deque(Card.parse(''.join(hand['deck'])))
     for name, args in hand['ops']:
         perform(state, name, args)
@@ -37,6 +123,9 @@ def perform(state, name, args):
         return getattr(state, name)(*args)
     pots = list(state.pots)
     op = state.push_chips()
+    if isinstance(state, RiverState):
+        return dict(amounts=list(op.amounts), pot=op.pot_index, board=op.board_index,
+                    winners=pot_winners(state, op.pot_index, op.board_index or 0))
     # PokerKit awards the entire tie remainder to one player; our table
     # distributes one chip each clockwise, with engine indices left of button.
     if op.board_index is not None:
@@ -67,6 +156,9 @@ def step(hand, state, name, *args):
                 hand['dealt'][hand['ids'][i]] = [repr(c) for c in cards]
     if name == 'push_chips':
         hand['awards'].append(op)
+    if isinstance(state, RiverState) and state.original_pots is not None:
+        hand['pots'] = [dict(amount=raked + amount, eligible=[hand['ids'][i] for i in eligible])
+                        for raked, amount, eligible in state.original_pots]
     return op
 
 
