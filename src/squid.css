@@ -1,0 +1,15 @@
+.squid-status { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 5px 18px; font-size: 11px; color: #655487; background: #f3effb; }
+.squid-tag { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: inherit; padding: 3px 0; cursor: pointer; font: inherit; text-align: left; overflow-wrap: anywhere; }
+.squid-status > span { color: #805c20; overflow-wrap: anywhere; }
+.squid-member { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid #e6e0ef; }
+.squid-member strong { overflow-wrap: anywhere; }
+.squid-member small { width: 100%; color: #777; }
+.squid-settlement { margin: 12px 0; padding: 12px; background: #f5f2fa; border-radius: 10px; font-size: 12px; overflow-wrap: anywhere; }
+.squid-settlement h3 { margin: 0 0 6px; font-size: 14px; }
+.squid-settlement p { margin: 5px 0; }
+.squid-settlement p > b { margin-left: 10px; }
+.squid-settlement summary, .squid-rules-details summary { cursor: pointer; padding: 6px 0; }
+.squid-notice { position: fixed; z-index: 65; left: 50%; top: 100px; transform: translateX(-50%); max-width: calc(100vw - 24px); width: max-content; padding: 9px 14px; background: #493366f2; color: white; border-radius: 12px; box-shadow: 0 4px 20px #27153525; font-size: 12px; pointer-events: none; overflow-wrap: anywhere; }
+.squid-notice span { display: block; margin-top: 4px; font-size: 10px; }
+.squid-history-award { color: #68518f; font-size: 12px; }
+@media (max-width: 760px) { .squid-status { padding: 4px 10px; font-size: 10px; } }

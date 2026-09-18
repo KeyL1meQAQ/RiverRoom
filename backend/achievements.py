@@ -93,7 +93,7 @@ def busted_players(hand):
             raise ValueError('Invalid settlement stack')
         if end == 0:
             busted.append(pid)
-    return busted
+    return list(dict.fromkeys([*busted, *hand.get('squid_busted', [])]))
 
 
 def reset_metric(room, metric, since):

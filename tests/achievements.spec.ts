@@ -78,7 +78,7 @@ test('nine-seat badges fit cards, player information, and action capsules at all
     for (const scenario of ['table_actions', 'tie', 'nine_twice', 'large_result']) {
       const state = structuredClone(fixtures[scenario === 'large_result' ? 'nine_twice' : scenario]);
       state.players.forEach((p, i) => {
-        p.achievements = { wins: 0, busts: 0 };
+        p.achievements = { wins: 0, busts: 0 }; p.squid_count = null;
         p.name = i === 0 ? '长昵称测试玩家十二号' : p.name;
         if (scenario === 'table_actions') { p.online = i % 3 !== 0; p.away = i === 2; }
         if (scenario === 'large_result') p.stack = 123456789;
@@ -87,25 +87,36 @@ test('nine-seat badges fit cards, player information, and action capsules at all
       push(state);
       await expect(page.locator('.achievement-badges')).toHaveCount(0);
       const frameHeights = await page.locator('.seat.occupied').evaluateAll(seats => seats.map(seat => seat.getBoundingClientRect().height));
+      const cardPositions = await page.locator('.seat-wrap:has(.occupied)').evaluateAll(wraps => wraps.map(wrap => {
+        const card = wrap.querySelector('.hole-cards')!.getBoundingClientRect();
+        const frame = wrap.querySelector('.seat')!.getBoundingClientRect();
+        return [card.left - frame.left, card.top - frame.top];
+      }));
       const cardTopOffsets = await page.locator('.seat-wrap:has(.occupied)').evaluateAll(wraps => wraps.map(wrap =>
         wrap.querySelector('.hole-cards')!.getBoundingClientRect().top - wrap.querySelector('.seat')!.getBoundingClientRect().top));
-      state.players.forEach((p, i) => { p.achievements = { wins: i % 2 ? 99 : 100, busts: i % 2 ? 100 : 99 }; });
+      state.players.forEach((p, i) => { p.achievements = { wins: i % 2 ? 99 : 100, busts: i % 2 ? 100 : 99 }; p.squid_count = i % 3; });
       push(state);
       await expect(page.locator('.achievement-badges')).toHaveCount(9);
       expect(await page.locator('.seat.occupied').evaluateAll(seats => seats.map(seat => seat.getBoundingClientRect().height))).toEqual(frameHeights);
       expect(await page.locator('.seat-wrap:has(.occupied)').evaluateAll(wraps => wraps.map(wrap =>
         wrap.querySelector('.hole-cards')!.getBoundingClientRect().top - wrap.querySelector('.seat')!.getBoundingClientRect().top)),
       'badges must not lift hole cards relative to their player frame').toEqual(cardTopOffsets);
-      await page.screenshot({ path: `artifacts/badges-${scenario}-${width}.png`, fullPage: true });
+      expect(await page.locator('.seat-wrap:has(.occupied)').evaluateAll(wraps => wraps.map(wrap => {
+        const card = wrap.querySelector('.hole-cards')!.getBoundingClientRect();
+        const frame = wrap.querySelector('.seat')!.getBoundingClientRect();
+        return [card.left - frame.left, card.top - frame.top];
+      })), 'badges must not displace hole cards in either direction').toEqual(cardPositions);
+      await page.screenshot({ path: `artifacts/badges-corner-index-${scenario}-${width}.png`, fullPage: true });
       const issues = await page.evaluate(() => {
         const visible = (el: Element) => el.getBoundingClientRect().width > 0 && getComputedStyle(el).visibility !== 'hidden';
         const intersects = (a: DOMRect, b: DOMRect) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
           Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
-        const blockers = [...document.querySelectorAll('.seat-top, .seat-stack-row, .seat-hand-label, .hole-cards .playing-card, .seat-bet, .dealer, .boards, .pot-label')].filter(visible);
+        const cardInfo = innerWidth <= 760 ? '.hole-cards .playing-card > b, .hole-cards .playing-card > span, .hole-cards .hole-card-mark' : '.hole-cards .playing-card';
+        const blockers = [...document.querySelectorAll(`.seat-top, .seat-stack-row, .seat-hand-label, ${cardInfo}, .seat-bet, .dealer, .boards, .pot-label`)].filter(visible);
         const visibleBounds = (el: Element) => {
           const rect = el.getBoundingClientRect();
           // Mobile cards already tuck behind their own opaque player frame.
-          if (innerWidth <= 760 && el.matches('.hole-cards .playing-card')) {
+          if (innerWidth <= 760 && el.closest('.hole-cards')) {
             const frame = el.closest('.seat-wrap')!.querySelector('.seat')!.getBoundingClientRect();
             return new DOMRect(rect.x, rect.y, rect.width, Math.max(0, Math.min(rect.bottom, frame.top) - rect.top));
           }
@@ -117,7 +128,8 @@ test('nine-seat badges fit cards, player information, and action capsules at all
           const owner = badges.closest('.seat-wrap')!.className;
           const badgeRects = [...badges.children].map(badge => badge.getBoundingClientRect());
           const separated = badgeRects.every((rect, i) => !i || rect.left - badgeRects[i - 1].right >= 2);
-          const compact = badgeRects.every(rect => rect.width <= (innerWidth <= 760 ? 14 : 19) && rect.height <= (innerWidth <= 760 ? 14 : 18));
+          const horizontal = badgeRects.every(rect => Math.abs(rect.top - badgeRects[0].top) < 1);
+          const compact = badgeRects.every(rect => rect.width <= (innerWidth <= 760 ? 12 : 19) && rect.height <= (innerWidth <= 760 ? 12 : 18));
           const hits = blockers.filter(blocker => intersects(bounds, visibleBounds(blocker)));
           const digits = [...badges.querySelectorAll('text')].filter(text => {
             const r = text.getBoundingClientRect();
@@ -126,6 +138,7 @@ test('nine-seat badges fit cards, player information, and action capsules at all
           });
           return [...hits.map(hit => `${owner}: badge overlaps ${hit.className}`),
             ...(!separated ? [`${owner}: badges must have a visible gap`] : []),
+            ...(!horizontal ? [`${owner}: badges must remain in one horizontal row`] : []),
             ...(!compact ? [`${owner}: badges exceed compact size`] : []),
             ...(bounds.top >= frame.top || bounds.bottom <= frame.top || bounds.bottom > frame.top + 6
               ? [`${owner}: badge does not hang over the top edge`] : []),

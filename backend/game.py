@@ -2,11 +2,11 @@ import copy
 import secrets
 import time
 
-from . import achievements, bounty, engine, hands
+from . import achievements, bounty, engine, hands, squid
 
 MAX_INTEGER = 9_007_199_254_740_991
 DEFAULTS = dict(sb=1, bb=2, timebank=10, refill=20, straddle=False, twice=False,
-                bounty=False, bounty_amount=None)
+                bounty=False, bounty_amount=None, squid=False, squid_amount=None, squid_reveal=False)
 
 
 class GameError(ValueError):
@@ -44,6 +44,11 @@ def settings(value):
         result['bounty_amount'] = result['bb']
     if result['bounty_amount'] is not None:
         integer(result['bounty_amount'], 1)
+    require(type(result['squid']) is bool and type(result['squid_reveal']) is bool, '鱿鱼开关格式不正确')
+    if result['squid_amount'] is None and result['squid']:
+        result['squid_amount'] = result['bb']
+    if result['squid_amount'] is not None:
+        integer(result['squid_amount'], 1, MAX_INTEGER // 500)
     return result
 
 
@@ -84,6 +89,7 @@ def create_room(name, config, browser, now=None):
                 recovery=False, resume_phase=None, closing=False, closed_at=None,
                 empty_since=now, created=now, version=0)
     achievements.initialize(room)
+    squid.migrate(room)
     owner = add_player(room, browser, now)
     room['owner'] = owner['id']
     log(room, '房间已创建', now, 'room')
@@ -120,11 +126,32 @@ def post_ledger(room, p, kind, amount, now, by, reverses=None):
 
 def cashout(room, p, now, by):
     require(not in_hand(room, p['id']), '当前手牌结束后才能离座')
-    if p['stack']:
+    held = squid.member(room, p['id']) is not None
+    if p['stack'] and not held:
         post_ledger(room, p, 'buyout', p['stack'], now, by)
-    p.update(seat=None, leave=False, away=False)
+    p.update(seat=None, leave=False, away=False, squid_held=held)
     room['requests'] = [r for r in room['requests'] if r['pid'] != p['id']]
-    log(room, f"{p['name']} 离座", now, 'room')
+    log(room, f"{p['name']} 离座" + (' · 筹码暂留，本轮鱿鱼收付完成后买出' if held else ''), now, 'room')
+
+
+def release_squid_balances(room, now):
+    for p in room['players'].values():
+        if p.get('squid_held') and squid.member(room, p['id']) is None:
+            p['squid_held'] = False
+            if p['seat'] is None and p['stack']:
+                post_ledger(room, p, 'buyout', p['stack'], now, room['owner'])
+
+
+def apply_squid_config(room, now):
+    if (room['hand'] and room['hand']['result'] is None) or room.get('straddle_offer'):
+        return
+    if not room['settings'].get('squid'):
+        cancelled = squid.cancel(room, now, '关闭鱿鱼游戏')
+        if cancelled:
+            log(room, f"第 {cancelled['number']} 轮鱿鱼已作废 · 关闭玩法", now, 'squid')
+    elif room.get('squid_round'):
+        room['squid_round']['amount'] = room['settings']['squid_amount']
+    release_squid_balances(room, now)
 
 
 def credit_request(room, req, now, by):
@@ -133,15 +160,19 @@ def credit_request(room, req, now, by):
         require(p['seat'] is None and not p['banned'], '无法入座')
         require(not any(x['seat'] == req['seat'] for x in room['players'].values()), '座位已被占用')
         require(not any(x['id'] != p['id'] and x['seat'] is not None and x['name'] == req['name'] for x in room['players'].values()), '该昵称已被使用')
+        require(req['amount'] > 0 or (p.get('squid_held') and p['stack'] > 0), '暂留筹码已结算，请重新申请买入')
         p['name'] = req['name']
-        p.update(seat=req['seat'], away=False, leave=False)
+        p.update(seat=req['seat'], away=False, leave=False, squid_held=False)
         if p['first_seat']:
             p['bank'] = room['settings']['timebank']
             p['first_seat'] = False
         room['requests'] = [x for x in room['requests'] if x['seat'] != req['seat'] or x['kind'] != 'seat']
     else:
         require(p['seat'] is not None and not p['leave'], '玩家已离座或正在离座')
-    post_ledger(room, p, 'buyin', req['amount'], now, by)
+    if req['amount']:
+        post_ledger(room, p, 'buyin', req['amount'], now, by)
+    else:
+        log(room, f"{p['name']} 恢复入座，沿用本轮待结算筹码", now, 'room')
     room['requests'] = [x for x in room['requests'] if x['id'] != req['id']]
 
 
@@ -174,6 +205,7 @@ def positions(room, players):
 
 
 def begin_next(room, now):
+    apply_squid_config(room, now)
     if now < reveal_deadline(room['hand']):
         room.update(phase='between', deadline=reveal_deadline(room['hand']))
         return
@@ -187,7 +219,8 @@ def begin_next(room, now):
         room.update(phase='waiting', deadline=None)
         return
     pos = positions(room, players)
-    room['straddle_offer'] = {**pos, 'pid': None, 'bounty_rule': bounty.rule(room['settings'])}
+    room['straddle_offer'] = {**pos, 'pid': None, 'bounty_rule': bounty.rule(room['settings']),
+                             'squid_rule': squid.rule(room['settings'])}
     utg_seat = next_seat([p['seat'] for p in players], pos['bb'])
     utg = next(p for p in players if p['seat'] == utg_seat)
     if room['settings']['straddle'] and len(players) >= 3 and utg['online'] and utg['stack'] >= 2 * room['settings']['bb']:
@@ -221,6 +254,7 @@ def deal(room, now, straddle):
     room['hand']['button'] = offer['button']
     room['hand']['allow_twice'] = config['twice']
     room['hand']['bounty_rule'] = copy.deepcopy(offer.get('bounty_rule', bounty.rule({})))
+    squid.begin_hand(room, room['hand'], offer.get('squid_rule', squid.rule({})), now)
     room.update(straddle_offer=None, deadline=None)
     log(room, f"第 {room['number']} 手开始 · 盲注 {config['sb']}/{config['bb']}", now)
     progress_hand(room, engine.state_for(room['hand']), now)
@@ -296,6 +330,19 @@ def finish_hand(room, state, now):
         reward = hand['bounty']
         log(room, f"{reward['name']} 获得2-7奖励 +{reward['total']} · " +
             '、'.join(f"{p['name']} 支付 {p['amount']}" for p in reward['payments']), now)
+    for i, pid in enumerate(hand['ids']):
+        room['players'][pid]['stack'] = stacks[i]
+    hand['squid'] = squid.finish_hand(room, hand, now)
+    for player in room['players'].values():
+        player['profit'] = player['buyout'] + player['stack'] - player['buyin']
+    stacks = [room['players'][pid]['stack'] for pid in hand['ids']]
+    if hand['squid']:
+        event = hand['squid']
+        award = event['award']
+        log(room, f"{award['name']} 获得鱿鱼 · 本轮 {award['count']} 个 · 已发 {award['issued']}/{award['total']}", now, 'squid')
+        if event['settlement']:
+            log(room, f"第 {award['round']} 轮鱿鱼结算 · " + '、'.join(
+                f"{r['name']} {r['delta']:+d}" for r in event['settlement']['results']), now, 'squid')
     result = []
     for i, pid in enumerate(hand['ids']):
         p = room['players'][pid]
@@ -315,6 +362,7 @@ def finish_hand(room, state, now):
     achievements.retry_pending(room)
     achievements.record(room, hand)
     room['history'].append(copy.deepcopy(hand))
+    apply_squid_config(room, now)
     for p in room['players'].values():
         if p['leave']:
             cashout(room, p, now, room['owner'])
@@ -332,6 +380,10 @@ def close_room(room, now):
         return
     if now < reveal_deadline(room['hand']):
         return
+    cancelled = squid.cancel(room, now, '房间结束')
+    if cancelled:
+        log(room, f"第 {cancelled['number']} 轮鱿鱼已作废 · 房间结束", now, 'squid')
+    release_squid_balances(room, now)
     for p in room['players'].values():
         if p['seat'] is not None:
             cashout(room, p, now, room['owner'])
@@ -386,7 +438,7 @@ def command(room, pid, data, now):
         name = clean_name(data.get('name', ''))
         require(not any(x['id'] != pid and x['name'] == name and x['seat'] is not None for x in room['players'].values()), '该昵称已被使用')
         req = dict(id=secrets.token_urlsafe(9), kind='seat', pid=pid, name=name, seat=seat,
-                   amount=integer(data.get('amount'), 1), approved=False, at=now)
+                   amount=integer(data.get('amount'), 0 if p.get('squid_held') and p['stack'] > 0 else 1), approved=False, at=now)
         room['requests'] = [x for x in room['requests'] if x['pid'] != pid]
         room['requests'].append(req)
         p['name'] = name
@@ -475,8 +527,10 @@ def command(room, pid, data, now):
         require(isinstance(patch, dict), '房间配置格式不正确')
         playing = bool(room['hand'] and room['hand']['result'] is None) or room['phase'] == 'straddle'
         if playing:
-            require(set(patch) <= {'bounty', 'bounty_amount'}, '本手进行中只能调整2-7奖励，其他配置请在两手之间修改')
+            require(set(patch) <= {'bounty', 'bounty_amount', 'squid', 'squid_amount', 'squid_reveal'},
+                    '本手进行中只能调整2-7奖励和鱿鱼规则，其他配置请在两手之间修改')
         updated = settings({**room['settings'], **patch})
+        old_squid = squid.rule(room['settings'])
         old_rule = bounty.rule(room['settings'])
         room['settings'] = updated
         for player in room['players'].values():
@@ -485,6 +539,10 @@ def command(room, pid, data, now):
         if old_rule != bounty.rule(updated):
             state_text = f"开启 · 每人 {updated['bounty_amount']}" if updated['bounty'] else '关闭'
             log(room, f'2-7奖励 {state_text} · 下一手生效', now, 'room')
+        if old_squid != squid.rule(updated):
+            state_text = f"开启 · 单价 {updated['squid_amount']} · {'自动亮牌' if updated['squid_reveal'] else '不额外亮牌'}" if updated['squid'] else '关闭'
+            log(room, f"鱿鱼游戏 {state_text} · {'下一手生效' if playing else '已生效'}", now, 'squid')
+        apply_squid_config(room, now)
     elif kind == 'transfer':
         target = room['players'].get(data.get('pid'))
         require(target and target['online'] and not target['banned'] and target['id'] != pid, '请选择其他在线参与者')
@@ -501,6 +559,7 @@ def command(room, pid, data, now):
         require(entry and entry['kind'] == 'buyin', '只能冲正买入记录')
         require(not any(x['reverses'] == entry['id'] for x in room['ledger']), '此记录已冲正')
         target = room['players'][entry['pid']]
+        require(squid.member(room, target['id']) is None, '本轮鱿鱼尚未结算，不能冲正买入')
         require(target['seat'] is not None and target['stack'] == entry['amount'], '仅支持冲正尚未使用的全额买入；不允许部分买出')
         require(not any(h['finished_at'] > entry['at'] and target['id'] in h['ids'] for h in room['history']), '该买入已参与手牌，不能冲正')
         post_ledger(room, target, 'reverse_buyin', entry['amount'], now, pid, entry['id'])
@@ -666,6 +725,8 @@ def public_hand(hand, viewer, include_hint=False):
         uncontested_winner=hand.get('uncontested_winner'),
         bounty_rule=copy.deepcopy(hand.get('bounty_rule', bounty.rule({}))),
         bounty=copy.deepcopy(hand.get('bounty')) if hand['result'] is not None else None,
+        squid_rule=copy.deepcopy(hand.get('squid_rule', squid.rule({}))),
+        squid=copy.deepcopy(hand.get('squid')) if hand['result'] is not None else None,
         public_hand_labels=hands.public_labels(hand),
         **({'own_hand_labels': hands.own_labels(hand, viewer)} if include_hint else {}),
         result=hand['result'], awards=hand['awards'], votes=hand['votes'], voters=hand.get('voters', []),
@@ -679,7 +740,9 @@ def view(room, viewer, now):
     for p in room['players'].values():
         visible = {k: p[k] for k in ('id', 'name', 'seat', 'stack', 'buyin', 'buyout', 'profit', 'away',
                                      'online', 'offline', 'bank', 'hands', 'leave', 'banned', 'achievements')}
-        visible.update(bet=0, folded=False, cards=[], holding=p['stack'])
+        membership = squid.member(room, p['id'])
+        visible.update(bet=0, folded=False, cards=[], holding=p['stack'],
+                       squid_count=membership['count'] if membership else None, squid_held=p.get('squid_held', False))
         visible['achievements'] = p['achievements'].copy()
         if state and p['id'] in hand['ids']:
             idx = hand['ids'].index(p['id'])
@@ -692,6 +755,11 @@ def view(room, viewer, now):
     result = {k: copy.deepcopy(room[k]) for k in ('id', 'name', 'settings', 'owner', 'phase', 'deadline',
               'button', 'small_blind', 'big_blind', 'number', 'started', 'paused', 'recovery', 'closing', 'closed_at', 'version')}
     result.update(me=viewer, players=players, achievement_since=room['achievement_since'].copy(),
+        squid_round=copy.deepcopy(room.get('squid_round')),
+        squid_history=copy.deepcopy(room.get('squid_history', [])[-100:]),
+        squid_current=copy.deepcopy((room.get('straddle_offer') or {}).get('squid_rule', squid.rule({})))
+            if room.get('straddle_offer') else
+            copy.deepcopy(hand.get('squid_rule', squid.rule({}))) if state else squid.rule(room['settings']),
         bounty_current=copy.deepcopy((room.get('straddle_offer') or {}).get('bounty_rule', bounty.rule({})))
             if room['phase'] == 'straddle' else
             copy.deepcopy(hand.get('bounty_rule', bounty.rule({}))) if state else bounty.rule(room['settings']),

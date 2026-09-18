@@ -3019,20 +3019,26 @@ dialog::backdrop {
     --mobile-hole-width: 28px;
     z-index: 1;
   }
-  .table-stage .hole-cards .playing-card { width: 28px; height: 40px; border-radius: 3px; }
-  .table-stage .hole-cards .playing-card b, .table-stage .hole-cards .playing-card > span { font-size: 18px; }
-  .table-stage .hole-cards .playing-card > span { margin-top: 0; }
+  /* A corner index keeps the lower-right card face clear for the badge row. */
+  .table-stage .hole-cards .playing-card { position: relative; width: 28px; height: 40px; border-radius: 3px; }
+  .table-stage .hole-cards .playing-card > b,
+  .table-stage .hole-cards .playing-card > span {
+    position: absolute;
+    left: 2px;
+    margin: 0;
+    line-height: 1;
+  }
+  .table-stage .hole-cards .playing-card > b { top: 1px; font-size: 16px; }
+  .table-stage .hole-cards .playing-card > span { top: 17px; font-size: 13px; }
   .table-stage .hole-cards > :first-child {
     transform: rotate(-6deg);
-    --hole-index-offset: calc(var(--mobile-hole-width) / -8);
   }
-  .table-stage .hole-cards .playing-card > b,
-  .table-stage .hole-cards .playing-card > span { translate: var(--hole-index-offset, 0px) -1px; }
   .table-stage .hole-cards > :last-child { transform: rotate(6deg); margin-left: calc(var(--mobile-hole-width) / -4); }
   .table-stage .hole-cards > * { position: relative; }
   .table-stage .own-seat .hole-cards { top: -54px; gap: 0; --mobile-hole-width: 40px; }
   .table-stage .own-seat .hole-cards .playing-card { width: 40px; height: 56px; }
-  .table-stage .own-seat .hole-cards .playing-card b, .table-stage .own-seat .hole-cards .playing-card > span { font-size: 24px; }
+  .table-stage .own-seat .hole-cards .playing-card > b { top: 2px; left: 3px; font-size: 22px; }
+  .table-stage .own-seat .hole-cards .playing-card > span { top: 24px; left: 3px; font-size: 18px; }
   .table-stage .seat-hand-label {
     width: max-content;
     max-width: 82px;
@@ -3495,16 +3501,12 @@ dialog::backdrop {
 .achievement-detail small { display: block; margin-top: 5px; font-size: 11px; color: #8b6455; }
 .achievement-scope { margin: 9px 0 0; color: #73806f; font-size: 11px; }
 @media (max-width: 760px) {
-  .achievement-badges { top: -11px; right: -1px; height: 14px; gap: 2px; }
-  .achievement-badge { width: 14px; height: 14px; }
-  .seat-wrap:has(.achievement-badges) .hole-cards { left: calc(50% - 4px); }
-  .seat-wrap:has(.achievement-badge + .achievement-badge) .hole-cards { left: calc(50% - 15px); }
-  .own-seat:has(.achievement-badge + .achievement-badge) .hole-cards { left: calc(50% - 14px); }
+  .achievement-badges { top: -8px; bottom: auto; right: -1px; height: 12px; gap: 2px; flex-direction: row; }
+  .achievement-badge { width: 12px; height: 12px; }
   .table-stage.showing-result:has(.achievement-badges):not(:has(.large-amounts)) { min-height: 640px; max-height: none; }
   .table-stage.showing-result.double-board:has(.achievement-badges):not(:has(.large-amounts)) { min-height: 680px; max-height: none; }
 }
 @media (max-width: 380px) {
-  .seat-wrap:not(.own-seat):has(.achievement-badge + .achievement-badge) .hole-cards { left: calc(50% - 13px); }
   .seat-wrap:not(.own-seat) > .achievement-badges { right: -3px; }
 }
 @media (min-width: 761px) and (max-width: 1100px) {
@@ -3523,4 +3525,12 @@ dialog::backdrop {
     border: 0; padding: 2px 4px; background: transparent; color: #286040;
     font-size: 10px; white-space: nowrap;
   }
+}
+
+.achievement-badge.squid .badge-outline { fill: #d7cefc; stroke: #6c53a2; }
+.achievement-badge.squid .badge-count { fill: #493173; }
+
+@media (max-width: 760px) {
+  .achievement-badge .badge-count { font-size: 12px; }
+  .achievement-badge .badge-count.capped { font-size: 9px; }
 }

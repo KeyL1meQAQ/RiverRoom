@@ -2,12 +2,14 @@ import type { Player, Room } from './types';
 
 const count = (value: number) => value.toLocaleString('zh-CN');
 
-function Badge({ kind, value }: { kind: 'wins' | 'busts'; value: number }) {
-  const label = `${kind === 'wins' ? '赢池' : '被清台'} ${count(value)} 次`;
+function Badge({ kind, value }: { kind: 'wins' | 'busts' | 'squid'; value: number }) {
+  const label = kind === 'squid' ? `本轮鱿鱼 ${count(value)} 个` : `${kind === 'wins' ? '赢池' : '被清台'} ${count(value)} 次`;
   return <span className={`achievement-badge ${kind}`} role="img" aria-label={label} title={label}>
     <svg viewBox="0 0 28 26" aria-hidden="true">
       {kind === 'wins' ? <>
         <path className="badge-outline" d="M6 3H2v5c0 4 3 6 6 6m14-11h4v5c0 4-3 6-6 6M6 2h16v9c0 4-3 7-6 8v3h5v2H7v-2h5v-3c-3-1-6-4-6-8Z" />
+      </> : kind === 'squid' ? <>
+        <path className="badge-outline" d="M14 1 4 10l3 8-4 6 6-3 1 4 4-4 4 4 1-4 6 3-4-6 3-8Z" />
       </> : <>
         <path className="badge-outline" d="M15 1a12 12 0 1 0 10 7l-5 2 1-5-6 2Z" />
         <path className="badge-detail" d="m7 3 1 3M2 10l3 1m-2 7 3-1m3 6 1-3m8 3-1-3m7-3-3-1M19 2l-1 2 5-1 3 2" />
@@ -21,10 +23,12 @@ function Badge({ kind, value }: { kind: 'wins' | 'busts'; value: number }) {
 
 export function AchievementBadges({ player }: { player: Player }) {
   const { wins = 0, busts = 0 } = player.achievements || {};
-  if (!wins && !busts) return null;
+  const squid = player.squid_count;
+  if (!wins && !busts && squid == null) return null;
   return <span className="achievement-badges">
     {wins > 0 && <Badge kind="wins" value={wins} />}
     {busts > 0 && <Badge kind="busts" value={busts} />}
+    {squid != null && <Badge kind="squid" value={squid} />}
   </span>;
 }
 
@@ -41,7 +45,7 @@ export function AchievementDetails({ player, since, pending }: {
     </div>
     <div className="achievement-detail busts">
       <div><span>被清台</span><strong>{count(busts)} 次</strong></div>
-      <p>全部底池及2–7奖励结算后、补码前筹码归零计一次。全下暂时归零或主动离座不计。</p>
+      <p>全部底池、2–7奖励及鱿鱼结算后、补码前筹码归零计一次。全下暂时归零或主动离座不计。</p>
       {since?.busts > 1 && <small>从第 {count(since.busts)} 手起统计，更早记录不完整。</small>}
       {!!pending?.busts && <small>部分手牌待补算，当前显示已核实次数。</small>}
     </div>
