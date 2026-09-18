@@ -2,10 +2,11 @@ import copy
 import secrets
 import time
 
-from . import achievements, engine, hands
+from . import achievements, bounty, engine, hands
 
 MAX_INTEGER = 9_007_199_254_740_991
-DEFAULTS = dict(sb=1, bb=2, timebank=10, refill=20, straddle=False, twice=False)
+DEFAULTS = dict(sb=1, bb=2, timebank=10, refill=20, straddle=False, twice=False,
+                bounty=False, bounty_amount=None)
 
 
 class GameError(ValueError):
@@ -38,7 +39,22 @@ def settings(value):
     integer(result['timebank'], 0, 600)
     integer(result['refill'], 1, 10000)
     require(type(result['straddle']) is bool and type(result['twice']) is bool, '开关格式不正确')
+    require(type(result['bounty']) is bool, '奖励开关格式不正确')
+    if result['bounty_amount'] is None and result['bounty']:
+        result['bounty_amount'] = result['bb']
+    if result['bounty_amount'] is not None:
+        integer(result['bounty_amount'], 1)
     return result
+
+
+def migrate_bounty(room):
+    """Old rooms and already-prepared hands never acquire a retroactive bounty."""
+    changed = False
+    for key in ('bounty', 'bounty_amount'):
+        if key not in room['settings']:
+            room['settings'][key] = DEFAULTS[key]
+            changed = True
+    return changed
 
 
 def log(room, text, now, kind='game'):
@@ -171,7 +187,7 @@ def begin_next(room, now):
         room.update(phase='waiting', deadline=None)
         return
     pos = positions(room, players)
-    room['straddle_offer'] = {**pos, 'pid': None}
+    room['straddle_offer'] = {**pos, 'pid': None, 'bounty_rule': bounty.rule(room['settings'])}
     utg_seat = next_seat([p['seat'] for p in players], pos['bb'])
     utg = next(p for p in players if p['seat'] == utg_seat)
     if room['settings']['straddle'] and len(players) >= 3 and utg['online'] and utg['stack'] >= 2 * room['settings']['bb']:
@@ -204,6 +220,7 @@ def deal(room, now, straddle):
         [p['stack'] for p in players], blinds, config['bb'], room['number'])
     room['hand']['button'] = offer['button']
     room['hand']['allow_twice'] = config['twice']
+    room['hand']['bounty_rule'] = copy.deepcopy(offer.get('bounty_rule', bounty.rule({})))
     room.update(straddle_offer=None, deadline=None)
     log(room, f"第 {room['number']} 手开始 · 盲注 {config['sb']}/{config['bb']}", now)
     progress_hand(room, engine.state_for(room['hand']), now)
@@ -271,17 +288,24 @@ def finish_hand(room, state, now):
     winners.update(hand['ids'][i] for award in hand['awards'] for i in award.get('winners', []))
     last_winner = max((i for i, pid in enumerate(order) if pid in winners), default=-1)
     hand['revealed'] = list(dict.fromkeys(hand['revealed'] + order[:last_winner + 1]))
+    hand['folded'] = engine.folded_players(hand, state)
+    stacks = list(state.stacks)
+    hand['bounty'] = bounty.settle(room, hand, stacks, now)
+    require(sum(stacks) == sum(hand['initial']) and min(stacks) >= 0, '奖励结算筹码不守恒')
+    if hand['bounty'] is not None:
+        reward = hand['bounty']
+        log(room, f"{reward['name']} 获得2-7奖励 +{reward['total']} · " +
+            '、'.join(f"{p['name']} 支付 {p['amount']}" for p in reward['payments']), now)
     result = []
     for i, pid in enumerate(hand['ids']):
         p = room['players'][pid]
-        p['stack'] = state.stacks[i]
+        p['stack'] = stacks[i]
         p['profit'] = p['buyout'] + p['stack'] - p['buyin']
         p['hands'] += 1
         if p['hands'] % room['settings']['refill'] == 0:
             p['bank'] = room['settings']['timebank']
-        result.append(dict(pid=pid, name=p['name'], delta=state.stacks[i] - hand['initial'][i], won=payouts[i]))
+        result.append(dict(pid=pid, name=p['name'], delta=stacks[i] - hand['initial'][i], won=payouts[i]))
     hand['result'] = result
-    hand['folded'] = engine.folded_players(hand, state)
     hand['showdown_results'] = hands.showdown_results(hand)
     hand['finished_at'] = now
     hand['reveal_until'] = now + 5
@@ -447,12 +471,20 @@ def command(room, pid, data, now):
             begin_next(room, now)
     elif kind == 'settings':
         require(not room['closing'], '房间正在结束')
-        require(not (room['hand'] and room['hand']['result'] is None) and room['phase'] != 'straddle', '请在两手之间调整配置，可先暂停后续发牌')
-        updated = settings(data.get('settings'))
+        patch = data.get('settings')
+        require(isinstance(patch, dict), '房间配置格式不正确')
+        playing = bool(room['hand'] and room['hand']['result'] is None) or room['phase'] == 'straddle'
+        if playing:
+            require(set(patch) <= {'bounty', 'bounty_amount'}, '本手进行中只能调整2-7奖励，其他配置请在两手之间修改')
+        updated = settings({**room['settings'], **patch})
+        old_rule = bounty.rule(room['settings'])
         room['settings'] = updated
         for player in room['players'].values():
             player['bank'] = min(player['bank'], updated['timebank'])
         log(room, '房主更新房间配置', now, 'room')
+        if old_rule != bounty.rule(updated):
+            state_text = f"开启 · 每人 {updated['bounty_amount']}" if updated['bounty'] else '关闭'
+            log(room, f'2-7奖励 {state_text} · 下一手生效', now, 'room')
     elif kind == 'transfer':
         target = room['players'].get(data.get('pid'))
         require(target and target['online'] and not target['banned'] and target['id'] != pid, '请选择其他在线参与者')
@@ -632,6 +664,8 @@ def public_hand(hand, viewer, include_hint=False):
         showdown_results=hand.get('showdown_results', []),
         pots=copy.deepcopy(hand.get('pots', [])),
         uncontested_winner=hand.get('uncontested_winner'),
+        bounty_rule=copy.deepcopy(hand.get('bounty_rule', bounty.rule({}))),
+        bounty=copy.deepcopy(hand.get('bounty')) if hand['result'] is not None else None,
         public_hand_labels=hands.public_labels(hand),
         **({'own_hand_labels': hands.own_labels(hand, viewer)} if include_hint else {}),
         result=hand['result'], awards=hand['awards'], votes=hand['votes'], voters=hand.get('voters', []),
@@ -658,6 +692,9 @@ def view(room, viewer, now):
     result = {k: copy.deepcopy(room[k]) for k in ('id', 'name', 'settings', 'owner', 'phase', 'deadline',
               'button', 'small_blind', 'big_blind', 'number', 'started', 'paused', 'recovery', 'closing', 'closed_at', 'version')}
     result.update(me=viewer, players=players, achievement_since=room['achievement_since'].copy(),
+        bounty_current=copy.deepcopy((room.get('straddle_offer') or {}).get('bounty_rule', bounty.rule({})))
+            if room['phase'] == 'straddle' else
+            copy.deepcopy(hand.get('bounty_rule', bounty.rule({}))) if state else bounty.rule(room['settings']),
         achievement_pending={metric: len(numbers) for metric, numbers in room.get('achievement_pending', {}).items()},
         hand=public_hand(hand, viewer, include_hint=True), server_time=now,
         requests=[r for r in room['requests'] if viewer == room['owner'] or r['pid'] == viewer],

@@ -5,6 +5,13 @@ export type Config = {
   refill: number;
   straddle: boolean;
   twice: boolean;
+  bounty: boolean;
+  bounty_amount: number | null;
+};
+export type BountyRule = { enabled: boolean; amount: number | null };
+export type BountyAward = {
+  id: string; pid: string; name: string; amount: number; total: number; at: number;
+  payments: { pid: string; name: string; amount: number }[];
 };
 export type Player = {
   id: string;
@@ -48,6 +55,8 @@ export type Hand = {
   showdown_results?: PotResult[];
   pots?: { amount: number; eligible: string[] }[];
   uncontested_winner?: string | null;
+  bounty_rule?: BountyRule;
+  bounty?: BountyAward | null;
   cards: Record<string, (string | null)[]>;
   revealed: string[];
   shown_cards: Record<string, number[]>;
@@ -85,6 +94,7 @@ export type Room = {
   id: string;
   name: string;
   settings: Config;
+  bounty_current?: BountyRule;
   owner: string;
   phase: string;
   deadline: number | null;

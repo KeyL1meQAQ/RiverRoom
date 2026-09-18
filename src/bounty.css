@@ -1,0 +1,62 @@
+.bounty-option { display: flex; align-items: center; gap: 6px; }
+.bounty-option .switch-row { flex: 1; min-width: 0; }
+.bounty-option .icon-button { color: #bc9955; flex: 0 0 34px; }
+.bounty-rules { line-height: 1.7; }
+.bounty-rules ul { padding-left: 22px; }
+.bounty-rules li { margin: 12px 0; }
+.bounty-rule-mark { font: 700 34px Georgia, serif; color: #e0c17d; text-align: center; }
+.bounty-rule-mark span { color: #dc9772; }
+.bounty-config-note, .bounty-pending { color: #d8b975; font-size: 12px; line-height: 1.5; }
+.bounty-pending { text-align: center; padding: 5px 12px; }
+.bounty-status { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 0 8px;
+  padding: 2px 10px; flex: 0 0 auto; background: #e9eeea; }
+.bounty-status .bounty-tag { display: inline-flex; align-items: center; gap: 6px; background: transparent;
+  border: 0; border-radius: 5px; color: #79602a; font-size: 11px; padding: 5px 4px; max-width: 100%; }
+.bounty-status .bounty-pending { color: #79602a; }
+.bounty-history { margin: 12px 0; border: 1px solid #80683d; border-radius: 8px; padding: 10px; background: #c7983610; }
+.bounty-history h3 { color: #e4c383; font-size: 13px; margin: 0 0 8px; overflow-wrap: anywhere; }
+.bounty-history p { margin: 5px 0; font-size: 12px; overflow-wrap: anywhere; }
+.bounty-celebration {
+  position: fixed; z-index: 90; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 32px)); padding: 24px 18px 26px; box-sizing: border-box;
+  pointer-events: none; isolation: isolate; container-type: inline-size; text-align: center; color: #ffe9ad;
+  border: 1px solid #d5ad586b; border-radius: 28px;
+  background: radial-gradient(ellipse at 50% 30%, #715225ed, #191e1cfa 67%);
+  box-shadow: 0 0 0 5px #b8862715, 0 0 75px #b98e3b55, 0 24px 65px #0009;
+  animation: bounty-arrive 300ms cubic-bezier(.2, .8, .2, 1.2) both, bounty-depart 300ms 2700ms ease-in both;
+}
+.bounty-halo { position: absolute; z-index: -1; left: 50%; top: 30px; width: 210px; height: 210px;
+  border: 1px solid #edc86b66; border-radius: 50%; translate: -50% -25%;
+  box-shadow: 0 0 0 14px #edc86b08, inset 0 0 35px #efbd4030; animation: bounty-ring 900ms ease-out both; }
+.bounty-emblem { position: relative; width: 180px; height: 139px; margin: 0 auto 8px; }
+.bounty-laurel { position: absolute; inset: -21px 0 0; color: #dcb66e45; font-size: 175px; line-height: 1; }
+.bounty-mini-card { position: absolute; top: 8px; width: 64px; height: 88px; border-radius: 9px;
+  border: 2px solid #f2d28c; background: linear-gradient(140deg, #fff6d9, #d6b875);
+  box-shadow: 0 5px 14px #0008; color: #232a26; font: 700 37px Georgia, serif; padding-top: 3px; }
+.bounty-mini-card span { display: block; font-size: 27px; line-height: 1; }
+.bounty-mini-card.seven { left: 31px; rotate: -15deg; }
+.bounty-mini-card.deuce { left: 84px; top: 13px; rotate: 13deg; color: #9b3428; }
+.bounty-ribbon { position: absolute; bottom: 9px; left: 0; right: 0; background: linear-gradient(90deg, #a77b33, #f2d68f, #a77b33);
+  color: #34280f; padding: 7px 0; font-size: 11px; font-weight: 800; letter-spacing: 3px;
+  clip-path: polygon(0 0, 100% 0, 95% 50%, 100% 100%, 0 100%, 5% 50%); }
+.bounty-caption { display: flex; flex-direction: column; gap: 6px; font-size: 16px; }
+.bounty-caption strong { overflow-wrap: anywhere; font-size: 21px; }
+.bounty-caption span { color: #d6c5a0; letter-spacing: 2px; }
+.bounty-total { margin-top: 8px; color: #ffe5a1; font: 800 min(42px, calc(100cqw / var(--bounty-units)))/1.2 Georgia, serif;
+  text-shadow: 0 0 25px #ffc75555; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bounty-sparks { position: absolute; inset: 0; z-index: -1; overflow: hidden; border-radius: inherit; }
+.bounty-sparks i { position: absolute; left: 50%; top: 25%; width: 2px; height: 4px; background: #ffe7a0;
+  box-shadow: 0 0 7px #ffdd66; transform-origin: 0 0; animation: bounty-spark 1200ms ease-out both; }
+@keyframes bounty-arrive { from { opacity: 0; transform: translate(-50%, -50%) scale(.7); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes bounty-depart { to { opacity: 0; transform: translate(-50%, -53%) scale(.97); } }
+@keyframes bounty-ring { from { opacity: 0; scale: .5; } to { opacity: 1; scale: 1; } }
+@keyframes bounty-spark { 0% { opacity: 0; translate: 0 0; } 20% { opacity: 1; } 100% { opacity: 0; transform: translateY(-180px); } }
+@media (max-width: 760px) {
+  .bounty-celebration { width: min(340px, calc(100vw - 32px)); padding: 18px 12px 22px; }
+  .bounty-caption strong { font-size: 18px; }
+  .bounty-caption { font-size: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bounty-celebration, .bounty-celebration * { animation: none !important; }
+  .bounty-sparks { display: none; }
+}

@@ -42,6 +42,7 @@ class Service:
         for room in self.rooms.values():
             old = room['version']
             migrated = game.migrate_reveals(room)
+            migrated = game.migrate_bounty(room) or migrated
             migrated = achievements.migrate(room) or migrated
             migrated = achievements.retry_pending(room) or migrated
             if room['closed_at']:

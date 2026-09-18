@@ -41,7 +41,7 @@ export function AchievementDetails({ player, since, pending }: {
     </div>
     <div className="achievement-detail busts">
       <div><span>被清台</span><strong>{count(busts)} 次</strong></div>
-      <p>全部底池结算后、补码前筹码归零计一次。全下暂时归零或主动离座不计。</p>
+      <p>全部底池及2–7奖励结算后、补码前筹码归零计一次。全下暂时归零或主动离座不计。</p>
       {since?.busts > 1 && <small>从第 {count(since.busts)} 手起统计，更早记录不完整。</small>}
       {!!pending?.busts && <small>部分手牌待补算，当前显示已核实次数。</small>}
     </div>

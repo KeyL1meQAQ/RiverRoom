@@ -13,6 +13,7 @@ import {
   Crown,
   Eye,
   History,
+  Info,
   KeyRound,
   Link,
   LogOut,
@@ -34,6 +35,7 @@ import {
 import type { Config, Hand, Player, PotResult, Room } from "./types";
 import { useBoardPresentation, useSoundPreference } from "./presentation";
 import { AchievementBadges, AchievementDetails } from "./Achievements";
+import { BountyCelebration, BountyRules } from "./Bounty";
 import "./styles.css";
 
 const defaults: Config = {
@@ -43,6 +45,8 @@ const defaults: Config = {
   refill: 20,
   straddle: false,
   twice: false,
+  bounty: false,
+  bounty_amount: null,
 };
 const n = (v: number) =>
   v.toLocaleString("zh-CN", { maximumFractionDigits: 0 });
@@ -141,6 +145,7 @@ function IconButton({
 }) {
   return (
     <button
+      type="button"
       className={`icon-button ${className}`}
       aria-label={title}
       title={title}
@@ -169,16 +174,19 @@ function Modal({
   const setToastHost = useContext(ToastHostContext);
   useEffect(() => {
     const dialog = ref.current!;
+    const parentDialog = dialog.parentElement?.closest('dialog') || null;
     dialog.showModal();
     setToastHost(dialog);
     return () => {
-      setToastHost((current) => current === dialog ? null : current);
+      setToastHost((current) => current === dialog
+        ? parentDialog?.isConnected && parentDialog.open ? parentDialog : null
+        : current);
     };
   }, [setToastHost]);
   return (
     <dialog
       ref={ref}
-      onCancel={close}
+      onCancel={(e) => { e.stopPropagation(); close(); }}
       onClick={(e) => {
         if (e.target === e.currentTarget) close();
       }}
@@ -263,10 +271,13 @@ function CopyField({
 function ConfigFields({
   value,
   change,
+  playing = false,
 }: {
   value: Config;
   change: (v: Config) => void;
+  playing?: boolean;
 }) {
+  const [rules, setRules] = useState(false);
   const field = (
     key: keyof Config,
     label: string,
@@ -281,6 +292,7 @@ function ConfigFields({
         max={max}
         step="1"
         required
+        disabled={playing && key !== 'bounty_amount'}
         value={Number(value[key])}
         onChange={(e) => change({ ...value, [key]: Number(e.target.value) })}
       />
@@ -302,6 +314,7 @@ function ConfigFields({
           type="checkbox"
           role="switch"
           checked={value.twice}
+          disabled={playing}
           onChange={(e) => change({ ...value, twice: e.target.checked })}
         />
       </label>
@@ -311,9 +324,22 @@ function ConfigFields({
           type="checkbox"
           role="switch"
           checked={value.straddle}
+          disabled={playing}
           onChange={(e) => change({ ...value, straddle: e.target.checked })}
         />
       </label>
+      <div className="bounty-option">
+        <label className="switch-row">
+          <span>2–7 杂色奖励</span>
+          <input type="checkbox" role="switch" checked={!!value.bounty}
+            onChange={e => change({ ...value, bounty: e.target.checked,
+              bounty_amount: value.bounty_amount ?? (e.target.checked ? value.bb : null) })} />
+        </label>
+        <IconButton title="2–7 奖励规则" onClick={() => setRules(true)}><Info size={17} /></IconButton>
+      </div>
+      {value.bounty && field('bounty_amount', '每人奖励筹码', 1, Number.MAX_SAFE_INTEGER)}
+      {playing && <p className="bounty-config-note">本手已确定规则。奖励修改从下一手生效，其他配置请在两手之间修改。</p>}
+      {rules && <Modal title="2–7 杂色奖励规则" close={() => setRules(false)}><BountyRules /></Modal>}
     </div>
   );
 }
@@ -1068,6 +1094,10 @@ function RoomScreen({
   const target = room.players.find(p => p.id === targetSnapshot?.id) || targetSnapshot;
   const hand = room.hand;
   const active = hand && hand.result === null;
+  const configPlaying = !!active || room.phase === 'straddle';
+  const currentBounty = room.bounty_current || { enabled: !!room.settings.bounty, amount: room.settings.bounty_amount };
+  const pendingBounty = configPlaying && (currentBounty.enabled !== !!room.settings.bounty ||
+    (room.settings.bounty && currentBounty.amount !== room.settings.bounty_amount));
   const showWindow = !!(hand?.result && hand.cards[me.id]?.length &&
     now < hand.reveal_until && !room.closed_at);
   const reveal = (cards: number[]) => {
@@ -1217,6 +1247,15 @@ function RoomScreen({
           {room.settings.straddle && <span className="rule-tag">UTG</span>}
         </div>
       </div>
+      {(currentBounty.enabled || pendingBounty) && <div className="bounty-status">
+        <button type="button" className="bounty-tag" onClick={() => setModal('bounty-rules')}>
+          {currentBounty.enabled ? `2–7 奖励 · 每人 ${n(currentBounty.amount || 0)}` : '本手2–7奖励关闭'} <Info size={12} />
+        </button>
+        {pendingBounty && <span className="bounty-pending">下一手{room.settings.bounty
+          ? `开启2–7奖励 · 每人 ${n(room.settings.bounty_amount || 0)}` : '关闭2–7奖励'}
+          {room.phase === 'straddle' && '（正在询问 Straddle 的一手保持原规则）'}</span>}
+      </div>}
+      <BountyCelebration hand={hand} connection={connection} now={now} />
       {status === "revoked" && (
         <div className="connection-banner">
           身份已在另一设备召回。
@@ -1493,6 +1532,13 @@ function RoomScreen({
                       ))}
                       {h.uncontested_winner && <p className="history-log">无人形成底池，投入已退回；
                         {h.result?.find(p => p.pid === h.uncontested_winner)?.name} 获胜。</p>}
+                      {h.bounty && <div className="bounty-history">
+                        <h3>{h.bounty.name} 获得2-7奖励 +{n(h.bounty.total)}</h3>
+                        <p>约定每人 {n(h.bounty.amount)} · 实收 {n(h.bounty.total)}</p>
+                        {h.bounty.payments.map(payment => <p key={payment.pid}>
+                          {payment.name} 支付 {n(payment.amount)}{payment.amount < h.bounty!.amount ? '（余额不足）' : ''}
+                        </p>)}
+                      </div>}
                       {h.pots?.map((pot, index) => <div className="history-pot-definition" key={index}>
                         <b>{index ? `边池 ${index}` : '主池'} · {n(pot.amount)}</b>
                         <span>争夺资格：{pot.eligible.map(pid => h.result?.find(p => p.pid === pid)?.name || '玩家').join('、')}</span>
@@ -2069,19 +2115,21 @@ function RoomScreen({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              send({ type: "settings", settings: config }, true);
+              send({ type: "settings", settings: configPlaying
+                ? { bounty: config.bounty, bounty_amount: config.bounty_amount } : config }, true);
             }}
           >
-            <ConfigFields value={config} change={setConfig} />
+            <ConfigFields value={config} change={setConfig} playing={configPlaying} />
             <button
               className="primary wide"
-              disabled={busy || !!active || room.phase === "straddle"}
+              disabled={busy}
             >
-              {active ? "本手结束后可修改" : "保存配置"}
+              {configPlaying ? "保存奖励配置 · 下一手生效" : "保存配置"}
             </button>
           </form>
         </Modal>
       )}
+      {modal === 'bounty-rules' && <Modal title="2–7 杂色奖励规则" close={() => setModal(null)}><BountyRules /></Modal>}
       {modal === "player" && target && (
         <Modal title={target.name} close={() => setModal(null)}>
           {target.cards.length > 0 && (
