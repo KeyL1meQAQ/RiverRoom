@@ -2,9 +2,10 @@ import copy
 import secrets
 import time
 
-from . import achievements, bounty, engine, hands, squid, settlement
+from . import achievements, bounty, engine, equity, hands, squid, settlement
 
 MAX_INTEGER = 9_007_199_254_740_991
+RUNOUT_STREET_PAUSE = 1.5
 DEFAULTS = dict(sb=1, bb=2, timebank=10, refill=20, straddle=False, twice=False,
                 bounty=False, bounty_amount=None, squid=False, squid_amount=None, squid_reveal=False)
 
@@ -278,6 +279,8 @@ def consume_bank(room, now):
 def progress_hand(room, state, now):
     hand = room['hand']
     old_boards = hand.get('boards', [[]])
+    before_burns = tuple(map(repr, state.burn_cards))
+    previous_equity = hand.get('runout_equity')
     phase = engine.advance(hand, state, hand['allow_twice'], pause_on_board=True)
     hand['boards'] = engine.boards(state)
     room.update(phase=phase, deadline=None)
@@ -289,7 +292,20 @@ def progress_hand(room, state, now):
                     for i in range(len(hand['boards']))]
         count = sum(len(board) - previous[i] for i, board in enumerate(hand['boards']))
         hand['active_board'] = next((i for i, board in enumerate(hand['boards']) if len(board) > previous[i]), 0)
-        hand['deal'] = dict(seq=len(hand['ops']), start=now, until=now + count * .25,
+        start = now
+        if hand.get('runout_players'):
+            board = hand['active_board']
+            started = time.monotonic()
+            equity.prepare_deal(hand, board, previous[board], len(hand['boards'][board]),
+                                before_burns, tuple(map(repr, state.burn_cards)))
+            start += time.monotonic() - started
+            if not previous_equity or previous_equity['board'] != board:
+                start += .75  # Let players read the initial odds after reveal/switch.
+        # Keep the completed flop/turn and its odds visible before the next street.
+        # The persisted deadline also governs reconnects; river result timing is separate.
+        read_pause = (RUNOUT_STREET_PAUSE if hand.get('runout_players')
+                      and len(hand['boards'][hand['active_board']]) < 5 else 0)
+        hand['deal'] = dict(seq=len(hand['ops']), start=start, until=start + count * .25 + read_pause,
                             previous=previous)
         room['deadline'] = hand['deal']['until']
     elif phase == 'betting':
@@ -495,7 +511,7 @@ def command(room, pid, data, now):
         require(type(data.get('value')) is bool, '状态无效')
         require(data['value'] or p['stack'] > 0, '请先完成重买入')
         p['away'] = data['value']
-        log(room, f"{p['name']} {'AWAY' if p['away'] else '回到游戏'}", now, 'room')
+        log(room, f"{p['name']} {'离开' if p['away'] else '回到游戏'}", now, 'room')
     elif kind == 'start':
         require(not room['started'] and len(eligible(room, now)) >= 2, '至少需要两位可参与玩家')
         room.update(started=True, paused=False)
@@ -631,7 +647,7 @@ def tick(room, now):
     for p in room['players'].values():
         if not p['online'] and p['seat'] is not None and not p['away'] and now - p['offline'] >= 300:
             p['away'] = True
-            log(room, f"{p['name']} 离线满 5 分钟，进入 AWAY", now, 'room')
+            log(room, f"{p['name']} 离线满 5 分钟，进入离开状态", now, 'room')
     if room['empty_since'] is not None and now - room['empty_since'] >= 86400:
         room['closing'] = True
         room['paused'] = False
@@ -736,6 +752,8 @@ def public_hand(hand, viewer, include_hint=False):
         shown_cards={pid: shown_indices(hand, pid) for pid in hand['dealt'] if shown_indices(hand, pid)},
         reveal_until=reveal_deadline(hand), reveal_start=hand.get('reveal_start', 0), deal=hand.get('deal'),
         active_board=hand.get('active_board', 0), runout_result=copy.deepcopy(hand.get('runout_result', [])),
+        runout_equity=copy.deepcopy(hand.get('runout_equity')) if include_hint and hand['result'] is None
+            and hand.get('deal') and not hand.get('runout_result') else None,
         presentation=copy.deepcopy(hand.get('presentation')) if include_hint else None,
         showdown_results=hand.get('showdown_results', []),
         pots=copy.deepcopy(hand.get('pots', [])),

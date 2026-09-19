@@ -163,7 +163,7 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
           const cards = badge.parentElement!.querySelector('.hole-cards')!.getBoundingClientRect();
           const cornerSeat = innerWidth > 760 && [1, 3, 6, 8].includes(position);
           // Folded seats retain the same card slot with frosted placeholders.
-          const cardBottom = cards.top + parseFloat(getComputedStyle(badge.parentElement!).getPropertyValue('--hole-height'));
+          const cardBottom = cards.bottom;
           const inward = cornerSeat
             ? [6, 8].includes(position)
               ? Math.abs(rect.right - (cards.left - 8)) <= 1 &&

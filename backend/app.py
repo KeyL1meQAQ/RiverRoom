@@ -89,15 +89,14 @@ class Service:
     async def mutate(self, rid, fn):
         async with self.locks[rid]:
             room = self.room(rid)
-            previous = copy.deepcopy(room)
-            try:
-                result = fn(room)
-                if room != previous:
-                    room['version'] = previous['version'] + 1
-                    self.store.save(room, previous['version'])
-            except Exception:
-                self.rooms[rid] = previous
-                raise
+            working = copy.deepcopy(room)
+            # Native exact enumeration releases the GIL. Keep it off the event
+            # loop and private until committed, so readers never see half a turn.
+            result = await asyncio.to_thread(fn, working)
+            if working != room:
+                working['version'] = room['version'] + 1
+                self.store.save(working, room['version'])
+                self.rooms[rid] = working
         await self.publish(rid)
         return result
 
@@ -327,7 +326,7 @@ def create_app(store=None):
             if rid in service.rooms:
                 def disconnected(room):
                     p = room['players'][pid]
-                    others = any(pair == (pid, digest) for pair in service.connections[rid].values())
+                    others = any(pair == (pid, digest) for pair in list(service.connections[rid].values()))
                     if p['browser'] == digest and not others:
                         p.update(online=False, offline=time.time())
                         if not any(x['online'] for x in room['players'].values()):

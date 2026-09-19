@@ -151,10 +151,54 @@ def test_allin_deals_streets_before_result_and_preserves_window(monkeypatch):
         assert not hand['awards']
         game.tick(room, room['deadline'])
     assert stages == [3, 4, 5]
-    assert hand['finished_at'] == 1002.25
+    # The first run now includes a short initial-odds hold plus exact calculation.
+    assert hand['finished_at'] >= 1003
     assert hand['reveal_until'] == hand['presentation']['until'] + 5
     assert room['deadline'] == hand['presentation']['until'] + 20
     assert hand['showdown_results'][0]['winners'][0]['label'] == '一对[A]'
+
+
+@pytest.mark.parametrize('twice', [False, True])
+@pytest.mark.parametrize('prefix', [0, 3, 4])
+def test_runout_street_reading_pause_survives_storage(monkeypatch, tmp_path, twice, prefix):
+    room, ids, observer = fixed_table(monkeypatch, [('Ac', 'Ad'), ('Kc', 'Kd')], twice=twice)
+    while len(room['hand']['boards'][0]) < prefix:
+        action(room)
+    action(room, 'raise', engine.state_for(room['hand']).max_completion_betting_or_raising_to_amount)
+    raw_call(room, room['hand']['clock']['base_until'] - 20)
+    if twice:
+        for pid in ids:
+            game.command(room, pid, dict(type='vote', value=True), room['deadline'] - 1)
+    store = Store(f'sqlite:///{tmp_path}/reading.db')
+    store.save(room)
+    stages = []
+    while room['phase'] == 'dealing':
+        hand = room['hand']
+        if hand.get('runout_result'):
+            game.tick(room, room['deadline'])
+            continue
+        board = hand['active_board']
+        count = len(hand['boards'][board])
+        stages.append((board, count))
+        deal = hand['deal']
+        animation_end = deal['start'] + (count - deal['previous'][board]) * .25
+        assert room['deadline'] == pytest.approx(animation_end + (1.5 if count < 5 else 0))
+        if count < 5:
+            before = copy.deepcopy(hand)
+            game.tick(room, animation_end + 1.499)
+            assert room['hand'] == before
+            assert game.view(room, observer, animation_end + 1)['hand']['runout_equity'] is not None
+            old_version = room['version']
+            room['version'] += 1
+            store.save(room, old_version)
+            room = store.all()[0]
+            game.tick(room, animation_end + 1.499)
+            assert room['hand'] == before
+        assert room['hand']['result'] is None and not room['hand']['awards']
+        game.tick(room, room['deadline'])
+    assert stages == [(b, c) for b in range(2 if twice else 1) for c in (3, 4, 5) if c > prefix]
+    assert sum(p['stack'] for p in room['players'].values()) == 200
+    assert len(room['history']) == 1
 
 
 def test_all_tied_winners_and_board_only_best_five(monkeypatch):

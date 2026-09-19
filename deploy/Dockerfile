@@ -1,9 +1,16 @@
+FROM python:3.12-slim AS odds
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY backend/build_odds.py backend/runout_odds.c ./backend/
+RUN python -m backend.build_odds
+
 FROM python:3.12-slim
 ARG PIP_INDEX_URL=https://pypi.org/simple
 WORKDIR /app
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir --index-url "$PIP_INDEX_URL" -r backend/requirements.txt
 COPY backend ./backend
+COPY --from=odds /app/backend/_runout_odds.so ./backend/_runout_odds.so
 COPY dist ./dist
 RUN useradd --create-home poker && chown -R poker:poker /app
 USER poker

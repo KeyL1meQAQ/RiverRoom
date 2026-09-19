@@ -1,6 +1,6 @@
 # River Room: 178.236.46.11
 
-Current configuration (verified 2026-09-18): public HTTPS/WSS at
+Current configuration (verified 2026-09-19): public HTTPS/WSS at
 `https://rr.zandz.nexus` reaches the operator's existing Nginx listener on **443**,
 which proxies to `127.0.0.1:8080`. River Room retains host networking and the
 private PostgreSQL socket. This supersedes the initial direct Cloudflare-to-8080
@@ -38,6 +38,97 @@ no process listens on it and it is not published.
 
 Official Cloudflare ranges for future refreshes:
 https://www.cloudflare.com/ips-v4/ and https://www.cloudflare.com/ips-v6/.
+
+## Release 20260919T074127Z
+
+- Deploys the approved runout unique-win probabilities, including exclusion of
+  all used cards, post-vote reveal, per-card/current-board updates, and green/red
+  capsules. Mobile card geometry is preserved; only capsule size and position
+  change. Both Docker build paths compile the native exact enumerator.
+- Source: isolated snapshot of `8eaab866735d307bc4d2682be21334985afa9e64`
+  plus requested uncommitted work. No source drift before final documentation
+  updates; no commit or push was performed. Archive: 98 files, 609,401 bytes,
+  SHA-256 `c0c1783987a92abca302149ba01670ca02ade0e3ca14d76731f8100cf52811a0`.
+- Active release: `/opt/poker/releases/20260919T074127Z`; previous release:
+  `/opt/poker/releases/20260918T145838Z`. After acceptance and cleanup,
+  `/opt/poker/current` was atomically updated at `2026-09-19T07:55:55Z`.
+- New image:
+  `sha256:133e345330a6103cb897db8231c298e4d7090533267ef401b7c425e57c6a0366`.
+  Only the app was replaced, starting at `2026-09-19T07:46:16.293840627Z`.
+- Backup: `/opt/poker/shared/backups/poker-20260919T074127Z.dump`, 140,238
+  bytes, mode 600; `pg_restore --list` passed before activation. No restore.
+- Rollback tag: `river-room-app:rollback-20260919T074127Z`, retaining
+  `sha256:d87bc9f7be2334c613a6d7449f6c0100dc286b254be3bc63660316e2856621a6`.
+  Review persisted runout-state compatibility before rollback and retain the
+  current network/socket/proxy-trust contract; do not automatically restore DB.
+- Before activation and after cleanup: two open rooms, one started, zero online
+  players. Original rooms were preserved. App replacement interrupts connections;
+  existing started rooms recover paused until their owners continue.
+
+Acceptance evidence:
+
+- Isolated snapshot: 179 backend tests and the production frontend build passed.
+  Server image built successfully; 19 native-equity tests passed in the container.
+- Public Playwright first run: 38 passed, one failed out of 39. The nine-player
+  performance case exceeded its 20-second settlement wait. A targeted recheck
+  using phase polling passed (exit 0), confirming both runouts and settlement,
+  while retaining the latency finding below. This is not a clean first-run pass.
+- Real public rooms exercised 2/6/9-player double runouts. Fixture-driven UI cases
+  verified rendering, percentages/colors and responsive layout, not live game
+  outcome calculation. Desktop and 390px screenshots were inspected; browser
+  coverage also included 320px.
+- Public smoke verified HTTPS/WSS, identity-preserving reload, Secure/HttpOnly
+  cookies, and health `{"ok":true}` with `Cache-Control: no-store`. Public HTML
+  and referenced assets matched the staged build using normal TLS validation.
+- JS `index-DkA8kh8j.js` SHA-256:
+  `64728b488f1c14e16ca2815420a5e1f9c1d02e7d4f93028cf005628eb409d23d`.
+  CSS `index-B_JfVHLv.css` SHA-256:
+  `f75ad56a056c5f10abc8eb51964eee92c8276e1b66d259712e591333de6daa39`.
+- All eight run-created rooms were closed through public owner APIs; a scoped
+  database query confirmed 8/8 have `closed_at`.
+- App/DB healthy, socket SQL check passed, no app ERROR/Traceback lines found.
+  DB/Y2P container identity and start times, socket mounts, host networking,
+  empty port publication, Nginx/UFW hashes, FRP and NAT state match baseline.
+  No database recreation, firewall adjustment or proxy change was required.
+
+Probability performance on the running production container (2 vCPUs):
+
+| Calculation | Median time | Sampling scope |
+| --- | ---: | --- |
+| Preflop, 2–9 players | 202.855–394.639 ms | Five cold-result-cache samples per count; maximum 544.719 ms |
+| Heads-up, first/second flop card visible | 22.008 / 1.950 ms | Ten samples per prefix |
+| Heads-up, full flop / turn visible | 0.145 / 0.027 ms | Ten samples per prefix |
+| Initial preflop plus three flop prefixes, 2/6/9 players | 362.365 / 403.892 / 254.865 ms | Five samples per count |
+
+These are bounded synthetic calculations with the native library already loaded;
+they do not mutate rooms and are not a concurrency or capacity stress test.
+
+| Public real-game sample | Final vote HTTP | Concurrent health median | Baseline health median |
+| --- | ---: | ---: | ---: |
+| 2 players | 377.6 ms | 48.6 ms | 49.4 ms |
+| 6 players | 654.2 ms | 51.7 ms | 50.7 ms |
+| 9 players, recheck | 332.5 ms | 46.9 ms | 46.3 ms |
+
+One real hand per player count was measured. Health used five baseline and
+15 concurrent samples; concurrent maxima were 52.0/84.5/68.2 ms respectively.
+No marked health delay was observed during initial calculation in these samples.
+Badge detection used polling and is not a precise rendering-latency measurement.
+
+Known performance finding: the nine-player complete double-runout-to-settlement
+flow took approximately 20 seconds. The second board had four cards at 6.95 s,
+five at 12.21 s, and settlement was observed at 20.12 s. On private copies of
+that run-owned closed room, engine replay took 4.5–5.6 ms before the final river,
+97.8–156.7 ms after it, and 126.9–167.1 ms once settled. Profiling located the
+cost in PokerKit hand-killing / `can_win_now`; this replay did not call the new
+probability calculator. Repeated `state_for` work for views/broadcasts is a
+separate bottleneck, but these measurements do not fully attribute the entire
+20-second flow. No settlement optimization is included in this release.
+
+Evidence: `artifacts/deploy-20260919T074127Z/`, especially
+`server-performance.json`, `public-performance.json`, `settlement-profile.json`,
+`public-cleanup.json`, `operational-verification.json` and `finalized.json`.
+Final deployment/research documents are synchronized separately from the
+immutable tested application snapshot and their server hashes are compared.
 
 ## Release 20260918T145838Z
 

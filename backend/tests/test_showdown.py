@@ -187,7 +187,7 @@ def test_allin_with_sidepots_reveals_every_contender(monkeypatch):
     action(room)
     action(room)
     assert room['phase'] == 'runout'
-    assert set(game.public_hand(room['hand'], observer)['cards']) == set(ids)
+    assert game.public_hand(room['hand'], observer)['cards'] == {}
     for pid in ids:
         game.command(room, pid, {'type': 'vote', 'value': True}, 1002)
     settle_dealing(room)

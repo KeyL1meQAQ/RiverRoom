@@ -4,6 +4,7 @@ dist/
 __pycache__/
 .pytest_cache/
 *.pyc
+backend/_runout_odds.so
 .env
 .env.*
 !.env.example

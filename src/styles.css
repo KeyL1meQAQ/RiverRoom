@@ -279,12 +279,10 @@ b {
 .lobby-cards > .playing-card:first-child {
   transform: rotate(-12deg);
   width: 65px;
-  height: 92px;
 }
 .lobby-cards > .playing-card:nth-child(2) {
   transform: rotate(9deg);
   width: 65px;
-  height: 92px;
   margin-left: -13px;
   margin-top: 7px;
 }
@@ -654,7 +652,9 @@ b {
   align-items: center;
   justify-content: center;
   width: 46px;
-  height: 65px;
+  aspect-ratio: 5 / 7;
+  height: auto;
+  min-height: 0;
   border-radius: 4px;
   background: #fbfcf8;
   box-shadow: 0 2px 2px #172c3220;
@@ -674,7 +674,6 @@ b {
 }
 .playing-card.small {
   width: 29px;
-  height: 40px;
 }
 .playing-card.small > b {
   font-size: 16px;
@@ -789,7 +788,6 @@ b {
 }
 .winning-five .playing-card.small {
   width: 20px;
-  height: 28px;
 }
 .winning-five .playing-card.small > b,
 .winning-five .playing-card.small > span {
@@ -1384,7 +1382,6 @@ b {
 }
 .history-player .playing-card.small {
   width: 21px;
-  height: 29px;
 }
 .history-player .playing-card.small b,
 .history-player .playing-card.small > span {
@@ -1511,7 +1508,6 @@ b {
 }
 .reveal-choices .playing-card {
   width: 32px;
-  height: 44px;
 }
 .bet-controls {
   max-width: 670px;
@@ -1775,7 +1771,6 @@ dialog::backdrop {
   }
   .playing-card {
     width: 52px;
-    height: 73px;
   }
   .table-center {
     gap: 17px;
@@ -1814,7 +1809,6 @@ dialog::backdrop {
   }
   .playing-card {
     width: 35px;
-    height: 51px;
   }
   .playing-card > b,
   .playing-card > span {
@@ -1907,7 +1901,6 @@ dialog::backdrop {
   .lobby-cards > .playing-card:first-child,
   .lobby-cards > .playing-card:nth-child(2) {
     width: 49px;
-    height: 73px;
   }
   .lobby-cards .chip {
     width: 35px;
@@ -2054,7 +2047,6 @@ dialog::backdrop {
   }
   .playing-card {
     width: 29px;
-    height: 42px;
     border-radius: 3px;
   }
   .playing-card > b {
@@ -2074,7 +2066,6 @@ dialog::backdrop {
   }
   .playing-card.small {
     width: 25px;
-    height: 35px;
   }
   .playing-card.small > b {
     font-size: 14px;
@@ -2379,7 +2370,6 @@ dialog::backdrop {
   }
   .playing-card {
     width: 25px;
-    height: 37px;
   }
   .playing-card > b,
   .playing-card > span {
@@ -2390,7 +2380,6 @@ dialog::backdrop {
   }
   .playing-card.small {
     width: 23px;
-    height: 32px;
   }
   .my-status > div:nth-child(2) {
     gap: 5px;
@@ -2434,7 +2423,6 @@ dialog::backdrop {
   }
   .winning-five .playing-card.small {
     width: 17px;
-    height: 24px;
   }
   .winning-five .playing-card.small > b,
   .winning-five .playing-card.small > span {
@@ -2518,7 +2506,6 @@ dialog::backdrop {
   }
   .player-cards .playing-card {
     width: 48px;
-    height: 66px;
   }
   .player-cards .playing-card b,
   .player-cards .playing-card > span {
@@ -2563,7 +2550,6 @@ dialog::backdrop {
   }
   .boards .playing-card {
     width: 72px;
-    height: 104px;
   }
   .boards .playing-card > b,
   .boards .playing-card > span {
@@ -2586,7 +2572,7 @@ dialog::backdrop {
     --seat-top: 12px;
     --card-overlap: 8px;
     --hole-width: 58px;
-    --hole-height: 84px;
+    --hole-height: calc(var(--hole-width) * 7 / 5);
   }
   .seat-wrap .seat {
     position: absolute;
@@ -2638,13 +2624,12 @@ dialog::backdrop {
   .hole-cards > :first-child {
     transform: rotate(-6deg);
   }
-  .hole-cards > :last-child {
+  .hole-cards > :nth-child(2) {
     transform: rotate(6deg);
     margin-left: -14px;
   }
   .hole-cards .playing-card.small {
     width: var(--hole-width);
-    height: var(--hole-height);
   }
   .hole-cards .playing-card.small > b,
   .hole-cards .playing-card.small > span {
@@ -2735,7 +2720,6 @@ dialog::backdrop {
     --seat-height: 60px;
     --seat-top: 8px;
     --hole-width: 44px;
-    --hole-height: 64px;
   }
   .seat-top {
     height: 21px;
@@ -2749,7 +2733,6 @@ dialog::backdrop {
   }
   .boards .playing-card {
     width: 48px;
-    height: 70px;
   }
   .boards .playing-card > b,
   .boards .playing-card > span {
@@ -2787,7 +2770,6 @@ dialog::backdrop {
     height: 88px;
     --seat-top: 6px;
     --seat-height: 56px;
-    --hole-height: 64px;
   }
   .seat-top {
     height: 21px;
@@ -2811,7 +2793,7 @@ dialog::backdrop {
     font-size: 20px;
   }
   .boards .playing-card {
-    height: 78px;
+    width: calc(78px * 5 / 7);
   }
   .boards .playing-card > b,
   .boards .playing-card > span {
@@ -2979,7 +2961,7 @@ dialog::backdrop {
   .pot-label strong { font-size: 24px; }
   .boards { gap: 8px; }
   .board { gap: 3px; }
-  .boards .playing-card { width: 40px; height: 56px; }
+  .boards .playing-card { width: 40px; }
   .boards .playing-card > b, .boards .playing-card > span { font-size: 22px; }
   .board-number { left: -12px; top: 0; font-size: 10px; }
   .side-pots { font-size: 10px; max-width: 180px; }
@@ -3020,7 +3002,7 @@ dialog::backdrop {
     z-index: 1;
   }
   /* A corner index keeps the lower-right card face clear for the badge row. */
-  .table-stage .hole-cards .playing-card { position: relative; width: 28px; height: 40px; border-radius: 3px; }
+  .table-stage .hole-cards .playing-card { position: relative; width: 28px; border-radius: 3px; }
   .table-stage .hole-cards .playing-card > b,
   .table-stage .hole-cards .playing-card > span {
     position: absolute;
@@ -3033,10 +3015,10 @@ dialog::backdrop {
   .table-stage .hole-cards > :first-child {
     transform: rotate(-6deg);
   }
-  .table-stage .hole-cards > :last-child { transform: rotate(6deg); margin-left: calc(var(--mobile-hole-width) / -4); }
+  .table-stage .hole-cards > :nth-child(2) { transform: rotate(6deg); margin-left: calc(var(--mobile-hole-width) / -4); }
   .table-stage .hole-cards > * { position: relative; }
   .table-stage .own-seat .hole-cards { top: -54px; gap: 0; --mobile-hole-width: 40px; }
-  .table-stage .own-seat .hole-cards .playing-card { width: 40px; height: 56px; }
+  .table-stage .own-seat .hole-cards .playing-card { width: 40px; }
   .table-stage .own-seat .hole-cards .playing-card > b { top: 2px; left: 3px; font-size: 22px; }
   .table-stage .own-seat .hole-cards .playing-card > span { top: 24px; left: 3px; font-size: 18px; }
   .table-stage .seat-hand-label {
@@ -3108,13 +3090,13 @@ dialog::backdrop {
   .action-content:has(.reveal-actions) .prompt-actions { min-height: 48px; }
   .reveal-actions { min-height: 44px; gap: 8px; justify-content: center; }
   .reveal-choices { gap: 6px; }
-  .reveal-choices .playing-card { width: 28px; height: 38px; }
+  .reveal-choices .playing-card { width: 28px; }
   .prompt-actions { min-height: 60px; }
   .side-panel { top: 44px; height: calc(100dvh - 44px); }
   .toast { bottom: calc(134px + env(safe-area-inset-bottom)); }
 }
 @media (max-width: 380px) {
-  .boards .playing-card { width: 34px; height: 49px; }
+  .boards .playing-card { width: 34px; }
   .boards .playing-card > b, .boards .playing-card > span { font-size: 20px; }
   .table-stage .seat-wrap { width: 80px; }
   .table-stage .position-0 { width: 108px; }
@@ -3128,7 +3110,7 @@ dialog::backdrop {
 @media (max-width: 340px) {
   .room-header .brand > span { max-width: 42px; white-space: normal; font-size: 9px; line-height: 11px; }
   .room-info h1 { max-width: 112px; }
-  .boards .playing-card { width: 27px; height: 42px; }
+  .boards .playing-card { width: 27px; }
   .boards .playing-card > b, .boards .playing-card > span { font-size: 18px; }
   .table-stage .seat-bet { width: 64px; gap: 2px; }
   .table-stage .seat-bet .bet-amount { font-size: min(16px, calc(54px / var(--amount-length, 1))); }
@@ -3529,6 +3511,41 @@ dialog::backdrop {
 
 .achievement-badge.squid .badge-outline { fill: #d7cefc; stroke: #6c53a2; }
 .achievement-badge.squid .badge-count { fill: #493173; }
+
+.table-stage .hole-cards > .runout-equity {
+  position: absolute;
+  top: -9px;
+  right: -12px;
+  z-index: 5;
+  transform: none;
+  margin: 0;
+  min-width: 34px;
+  padding: 2px 6px;
+  border: 1px solid #ffffffa6;
+  border-radius: 999px;
+  background: #59636b;
+  color: #fff;
+  box-shadow: 0 1px 4px #10251f40;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 14px;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.table-stage .hole-cards > .runout-equity.leading { background: #237247; }
+.table-stage .hole-cards > .runout-equity.trailing { background: #aa383b; }
+@media (max-width: 760px) {
+  .table-stage .hole-cards > .runout-equity {
+    top: -15px;
+    right: -10px;
+    min-width: 26px;
+    padding: 0 3px;
+    font-size: 9px;
+    line-height: 12px;
+  }
+}
 
 @media (max-width: 760px) {
   .achievement-badge .badge-count { font-size: 12px; }

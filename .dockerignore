@@ -6,4 +6,5 @@ data
 test-results
 __pycache__
 *.pyc
+*.so
 .env

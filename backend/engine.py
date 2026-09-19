@@ -171,9 +171,10 @@ def advance(hand, state, allow_twice, pause_on_board=False):
         selectors = list(state.runout_count_selector_indices)
         if selectors:
             hand.setdefault('runout_prefix', len(list(state.get_board_cards(0))))
-            hand['revealed'] = [hand['ids'][i] for i, active in enumerate(state.statuses) if active]
             if allow_twice and hand['runouts'] is None:
                 return 'runout'
+            hand['runout_players'] = [hand['ids'][i] for i, active in enumerate(state.statuses) if active]
+            hand['revealed'] = list(dict.fromkeys(hand['revealed'] + hand['runout_players']))
             count = hand['runouts'] or 1
             step(hand, state, 'select_runout_count', count)
         elif state.can_burn_card():

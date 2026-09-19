@@ -72,6 +72,10 @@ export type Hand = {
   deal?: { seq: number; start: number; until: number; previous: number[] } | null;
   active_board?: number;
   runout_result?: PotResult[];
+  runout_equity?: {
+    board: number;
+    frames: Record<string, { total: number; wins: Record<string, number> }>;
+  } | null;
   presentation?: SettlementPresentation | null;
   reveal_start?: number;
   own_hand_labels?: string[][];

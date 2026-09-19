@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import type { Config, Hand, Player, PotResult, Room } from "./types";
 import { useBoardPresentation, useSoundPreference } from "./presentation";
+import { RunoutEquity } from "./RunoutEquity";
 import { FlipNumber, SettlementLayer, settlementBalances, useMotionBaseline } from "./settlement";
 import { AchievementBadges, AchievementDetails } from "./Achievements";
 import { BountyCelebration, BountyRules } from "./Bounty";
@@ -654,6 +655,13 @@ function PokerTable({
   const balances = settling ? settlementBalances(plan, now) : {};
   const activeBoard = hand?.result ? Math.max(0, (hand.boards.length || 1) - 1) : hand?.active_board || 0;
   const { boards, animated } = useBoardPresentation(hand, now, connection, sound);
+  const visibleCount = boards[activeBoard]?.length || 0;
+  const equity = room.phase === 'dealing' && !hand?.result && !hand?.runout_result?.length
+    && visibleCount < 5 && hand?.runout_equity?.board === activeBoard
+    ? hand.runout_equity.frames[String(visibleCount)] : undefined;
+  const winCounts = Object.values(equity?.wins || {});
+  const highest = Math.max(...winCounts);
+  const tied = winCounts.every(value => value === highest);
   const groups = (hand?.result ? hand.showdown_results || [] : hand?.runout_result || []).filter(group => group.board === activeBoard);
   const mainGroups = groups.filter(group => group.pot === 0);
   // A settled hand loaded on entry/reconnection gets its final pose immediately.
@@ -777,7 +785,7 @@ function PokerTable({
           : p?.leave
           ? "本手后离座"
           : p?.away
-            ? "AWAY"
+            ? "离开"
             : p && !p.online
               ? "离线"
               : p?.folded && playing
@@ -919,6 +927,11 @@ function PokerTable({
                     </span>
                   </>
                 ) : null}
+                {equity && equity.wins[p.id] !== undefined && !folded && (
+                  <RunoutEquity key={`${hand!.number}:${activeBoard}:${connection}`}
+                    wins={equity.wins[p.id]} total={equity.total}
+                    tone={tied ? 'tied' : equity.wins[p.id] === highest ? 'leading' : 'trailing'} />
+                )}
               </div>
             )}
           </div>
@@ -1690,7 +1703,7 @@ function RoomScreen({
           {me.seat !== null && (
             <div className="seat-tools">
               <IconButton
-                title={me.away ? "回到游戏" : "AWAY"}
+                title={me.away ? "回到游戏" : "离开"}
                 disabled={!!room.closed_at || busy}
                 onClick={() => send({ type: "away", value: !me.away })}
               >
@@ -2190,7 +2203,7 @@ function RoomScreen({
           {target.id === me.id && me.seat !== null && <div className="modal-actions personal-actions">
             <button className="secondary" disabled={busy || !!room.closed_at || (me.away && me.stack === 0)}
               onClick={() => send({ type: "away", value: !me.away }, true)}>
-              {me.away ? <Play size={16} /> : <Pause size={16} />}{me.away ? "回到游戏" : "AWAY"}
+              {me.away ? <Play size={16} /> : <Pause size={16} />}{me.away ? "回到游戏" : "离开"}
             </button>
             <button className="secondary" disabled={busy || !!awaiting || !!room.closed_at} onClick={openTopup}>
               <Coins size={16} />补码

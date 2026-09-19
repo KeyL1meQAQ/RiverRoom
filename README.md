@@ -53,13 +53,14 @@ docker compose down
 
 ## 本地开发
 
-建议使用 Node.js 22+、Python 3.11+；项目 Docker 镜像使用 Node.js 24 和 Python 3.12。以下命令适用于 macOS / Linux，在仓库根目录执行。
+建议使用 Node.js 22+、Python 3.11+；项目 Docker 镜像使用 Node.js 24 和 Python 3.12。以下命令适用于 macOS / Linux，在仓库根目录执行。精确跑马概率模块需要 C 编译器（macOS 的 Xcode Command Line Tools 或 Linux 的 GCC）；Docker 构建会自动编译该模块。
 
 ### 安装依赖
 
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt
+.venv/bin/python -m backend.build_odds
 npm ci
 ```
 
