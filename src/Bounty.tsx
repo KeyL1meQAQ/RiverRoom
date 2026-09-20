@@ -8,16 +8,30 @@ const n = (value: number) => value.toLocaleString('zh-CN');
 export function BountyRules() {
   return <div className="bounty-rules">
     <div className="bounty-rule-mark" aria-hidden="true">7♠ <span>2♥</span></div>
-    <p>用不同花色的 2 和 7 赢下主池，收取其他玩家支付的额外奖励。</p>
+    <p className="rules-intro">用不同花色的 2 和 7 独赢主池，赢取底池之外的额外奖励。</p>
+    <h3>怎么玩</h3>
     <ul>
-      <li>独赢主池才触发，诈唬让其他人全部弃牌也算。仅赢边池、主池平分或未形成底池不奖励。</li>
-      <li>发两次牌时，必须独赢两组主池；每手只奖励一次，不要求赢得边池。</li>
-      <li>中奖时自动公开两张底牌。本手其他获发底牌的玩家都要支付，已弃牌或断线也一样；观战、离开和等待下一手加入者不支付。</li>
-      <li>先分配底池，再支付奖励，最后处理离座和补码。余额不足就付清剩余筹码，不欠账、不自动补码；奖励扣光也计一次被清台。</li>
-      <li>每人金额是固定筹码，首次开启默认一个大盲；改盲注、Straddle 或关闭再开启不会自动改变已保存金额。</li>
-      <li>房主可随时修改奖励，从下一手生效。已经进入 Straddle 询问的一手保持原规则。</li>
+      <li><strong>拿到 2–7 杂色底牌：</strong>两张底牌一张是 2、一张是 7，花色不同即可。7♠2♣ 也算，不必一红一黑。</li>
+      <li><strong>独赢主池：</strong>摊牌获胜，或让其他人全部弃牌，都能获得奖励。</li>
+      <li><strong>其他玩家每人付一份：</strong>本手拿到底牌的其他玩家各支付房间约定的筹码，弃牌、离座或断线也要支付。</li>
     </ul>
-    <p className="muted">杂色指花色不同，7♠2♣ 也符合。公屏显示实际收到的奖励总额，包括 +0。</p>
+    <aside className="rules-example"><strong>举个例子</strong><p>6 人参与一手牌，每人奖励 10 筹码。你用 7♠2♥ 独赢主池，其他 5 人各付 10，你额外获得 <b>50 筹码</b>（筹码充足时）。</p></aside>
+    <h3>需要注意</h3>
+    <ul>
+      <li><strong>自动亮牌：</strong>获得奖励时，会向所有人公开你的两张底牌，无需手动领取。</li>
+      <li><strong>筹码不足不欠账：</strong>先分配底池，再从桌上筹码支付奖励。余额不足就付清剩余筹码，赢家收到的是实际支付的总额。</li>
+      <li><strong>设置修改从下一手生效：</strong>当前手仍按原来的奖励规则进行。</li>
+    </ul>
+    <details className="rules-more"><summary>更多规则</summary>
+      <ul>
+        <li><strong>哪些情况不奖励：</strong>同花的 2 和 7、仅公共牌出现 2 和 7、主池平分、只赢边池，或没有形成底池而仅退回投入。</li>
+        <li><strong>发两次牌：</strong>必须独赢两组主池；不要求赢得边池，每手只奖励一次。</li>
+        <li><strong>谁不用支付：</strong>没有参与本手发牌的玩家和观战者。</li>
+        <li><strong>奖励金额：</strong>首次开启默认每人一个大盲的筹码数，房主可以修改。之后调整盲注、Straddle 或关闭再开启，都不会自动改变已设金额。</li>
+        <li><strong>支付后筹码归零：</strong>也算被清台。奖励结算后再处理离座取回筹码和补码。</li>
+        <li><strong>正在询问 Straddle：</strong>这一手也按原规则进行，新设置从随后一手生效。</li>
+      </ul>
+    </details>
   </div>;
 }
 

@@ -31,7 +31,9 @@ test('create persists squid price, optional reveal, and fixed-price defaults', a
   await expect(toggle).not.toBeChecked();
   await page.getByRole('button', { name: '鱿鱼游戏规则', exact: true }).click();
   await expect(page.locator('dialog')).toContainText('只看第一组主池');
-  await expect(page.locator('dialog')).toContainText('离座、离开、断线不免除本轮责任');
+  await expect(page.locator('dialog')).toContainText('每人每轮最多一条');
+  await expect(page.locator('dialog')).toContainText('只剩一人没有鱿鱼时，本轮结束');
+  await expect(page.locator('dialog')).toContainText('离座仍参与本轮结算');
   await page.screenshot({ path: 'artifacts/squid-rules-390.png', fullPage: true });
   await page.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(toggle).not.toBeChecked();

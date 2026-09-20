@@ -329,6 +329,7 @@ function ConfigFields({
             bounty_amount: value.bounty_amount ?? (e.target.checked ? value.bb : null) })} />
       </div>
       {value.bounty && field('bounty_amount', '每人奖励筹码', 1, Number.MAX_SAFE_INTEGER)}
+      {value.bounty && <p className="bounty-config-note">获奖时，本手其他玩家各支付此数量的筹码。</p>}
       <div className="switch-row bounty-option">
         <label htmlFor={`${configId}-squid`}>鱿鱼游戏</label>
         <IconButton title="鱿鱼游戏规则" onClick={() => setSquidRules(true)}><Info size={17} /></IconButton>
@@ -338,12 +339,13 @@ function ConfigFields({
       </div>
       {value.squid && <>
         {field('squid_amount', '鱿鱼价格 / 筹码', 1, Math.floor(Number.MAX_SAFE_INTEGER / 500))}
+        <p className="bounty-config-note">本轮最后没有鱿鱼的人，向其他每人支付此数量的筹码。中途改价也适用于本轮已获得的鱿鱼。</p>
         <label className="switch-row"><span>获得鱿鱼时自动亮出两张底牌</span>
           <input type="checkbox" role="switch" checked={!!value.squid_reveal}
             onChange={e => change({ ...value, squid_reveal: e.target.checked })} />
         </label>
       </>}
-      {playing && <p className="bounty-config-note">本手已确定规则。奖励及鱿鱼修改从下一手生效，其他配置请在两手之间修改。</p>}
+      {playing && <p className="bounty-config-note">2–7 奖励和鱿鱼设置从下一手生效，当前手保持原规则。其他设置请在这手结束后修改。</p>}
       {squidRules && <Modal title="鱿鱼游戏规则" close={() => setSquidRules(false)}><SquidRules /></Modal>}
       {rules && <Modal title="2–7 杂色奖励规则" close={() => setRules(false)}><BountyRules /></Modal>}
     </div>

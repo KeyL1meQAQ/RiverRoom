@@ -10,9 +10,9 @@ from backend.tests.test_game import action, finish, settle_dealing, table
 from backend.tests.test_showdown import fixed_table
 
 
-def fold_hand(room):
+def fold_hand(room, winner=None):
     while room['phase'] == 'betting':
-        action(room, 'fold')
+        action(room, 'call' if room['hand']['clock']['pid'] == winner else 'fold')
 
 
 def next_hand(room):
@@ -43,6 +43,8 @@ def test_cycle_awards_then_settles_conserves_and_restarts():
     event = room['hand']['squid']['settlement']
     assert event['number'] == 1 and event['status'] == 'settled'
     assert sum(m['count'] for m in event['members']) == 2
+    assert sorted(m['count'] for m in event['members']) == [0, 1, 1]
+    assert len(event['payments']) == 1
     assert all(p['due'] == p['amount'] == 20 for p in event['payments'])
     assert room['squid_round'] is None
     assert sum(p['stack'] for p in room['players'].values()) == 300
@@ -50,6 +52,57 @@ def test_cycle_awards_then_settles_conserves_and_restarts():
     next_hand(room)
     assert room['squid_round']['number'] == 2
     assert all(m['count'] == 0 for m in room['squid_round']['members'])
+
+
+@pytest.mark.parametrize('reveal', [False, True])
+def test_repeat_winner_gets_no_token_or_extra_reveal_and_round_waits(reveal):
+    room, ids = table(squid=True, squid_amount=10, squid_reveal=reveal)
+    game.command(room, ids[0], dict(type='start'), 1000)
+    fold_hand(room, winner=ids[0])
+    assert room['hand']['squid']['award']['pid'] == ids[0]
+    next_hand(room)
+    fold_hand(room, winner=ids[0])
+    assert room['hand']['squid'] is None
+    assert ids[0] not in room['hand']['revealed']
+    assert [m['count'] for m in room['squid_round']['members']].count(0) == 2
+    assert squid.member(room, ids[0])['count'] == 1
+    assert not room['squid_history']
+    next_hand(room)
+    fold_hand(room, winner=ids[1])
+    event = room['hand']['squid']['settlement']
+    assert len(event['payments']) == 1
+    assert event['payments'][0]['pid'] == ids[2]
+    assert event['payments'][0]['amount'] == 20
+    assert [p['amount'] for p in event['payments'][0]['transfers']] == [10, 10]
+
+
+def test_legacy_unfinished_round_caps_tokens_and_keeps_history_and_balances(tmp_path):
+    room, ids = table((100,) * 4, squid=True, squid_amount=10)
+    game.command(room, ids[0], dict(type='start'), 1000)
+    squid.member(room, ids[0])['count'] = 2
+    legacy_history = [dict(number=0, status='settled', members=[dict(pid=ids[0], count=3)])]
+    room['squid_history'] = copy.deepcopy(legacy_history)
+    before = copy.deepcopy(room['players'])
+    store = Store(f'sqlite:///{tmp_path}/legacy-squid.db')
+    store.save(room)
+    restored = Service(store).rooms[room['id']]
+    assert squid.member(restored, ids[0])['count'] == 1
+    assert restored['squid_round']['total'] == 3
+    assert restored['squid_history'] == legacy_history
+    assert [p['stack'] for p in restored['players'].values()] == [p['stack'] for p in before.values()]
+    assert not squid.migrate(restored)
+    assert store.all()[0]['squid_round'] == restored['squid_round']
+    for p in restored['players'].values():
+        p.update(online=True, last_seen=2000)
+    game.command(restored, ids[0], dict(type='resume'), 2000)
+    fold_hand(restored, winner=ids[1])
+    assert restored['hand']['squid']['settlement'] is None
+    next_hand(restored)
+    fold_hand(restored, winner=ids[2])
+    event = restored['hand']['squid']['settlement']
+    assert event['payments'][0]['pid'] == ids[3]
+    assert event['payments'][0]['amount'] == 30
+    assert restored['squid_history'][0] == legacy_history[0]
 
 
 def test_newcomer_only_added_when_dealt_and_returning_player_not_counted_again():
@@ -173,18 +226,19 @@ def test_away_waiting_and_recovery_keep_round_and_resume_without_duplicate_membe
     assert restored['squid_round'] == before
 
 
-def test_insufficient_payments_are_independent_and_use_stable_largest_remainders():
+def test_last_player_short_payment_is_split_evenly_with_stable_remainders():
     room, ids = table((100, 100, 2, 100), squid=True, squid_amount=10)
-    # A pre-existing round with two holders and two independent debtors.
-    hand = dict(ids=ids, number=1, awards=[dict(pot=0, board=None, winners=[0], amounts=[1, 0, 0, 0])],
+    # The third distinct winner leaves one debtor with only two chips.
+    hand = dict(ids=ids, number=1, awards=[dict(pot=0, board=None, winners=[3], amounts=[0, 0, 0, 1])],
                 folded=[], revealed=[], squid_rule=squid.rule(room['settings']), squid_round_number=1)
     room['squid_round'] = dict(number=1, total=3, amount=10, started_hand=1, at=1000,
                               members=[dict(pid=pid, name=pid, count=1 if i < 2 else 0) for i, pid in enumerate(ids)])
     event = squid.finish_hand(room, hand, 1001)['settlement']
-    short, full = event['payments']
-    assert (short['due'], short['amount'], full['due'], full['amount']) == (30, 2, 30, 30)
-    assert [p['amount'] for p in short['transfers']] == [1, 1]
-    assert [p['amount'] for p in full['transfers']] == [20, 10]
+    assert len(event['payments']) == 1
+    short = event['payments'][0]
+    assert (short['pid'], short['due'], short['amount']) == (ids[2], 30, 2)
+    assert [p['amount'] for p in short['transfers']] == [1, 1, 0]
+    assert [p['due'] for p in short['transfers']] == [10, 10, 10]
     assert hand['squid_busted'] == [ids[2]]
     assert squid.distribute(1, [1, 1]) == [1, 0]
     assert squid.distribute(20, [3, 2]) == [12, 8]
@@ -309,16 +363,17 @@ def test_seven_deuce_paid_before_squid_and_topup_only_after_both(monkeypatch):
     room, ids, _ = fixed_table(monkeypatch, [('Ac', 'Ad'), ('7c', '2d'), ('Kc', 'Kd')],
         board=('7h', '2s', '9d', 'Js', '3h'), stacks=(8, 4, 100),
         bounty=True, bounty_amount=5, squid=True, squid_amount=5)
-    # The big blind already won the first squid in this round.
-    squid.member(room, ids[1])['count'] = 1
+    # The small blind holds a token; the big blind wins the second one.
+    squid.member(room, ids[0])['count'] = 1
     game.command(room, room['owner'], dict(type='topup', amount=50), 1001)
     fold_hand(room)
     assert room['hand']['bounty']['total'] == 8
     payments = {p['pid']: p['amount'] for p in room['hand']['squid']['settlement']['payments']}
-    assert payments == {ids[0]: 0, ids[2]: 3}
+    assert payments == {ids[2]: 3}
     assert room['players'][ids[2]]['stack'] == 50  # Pending buyin cannot fund either side payment.
     assert room['players'][ids[2]]['achievements']['busts'] == 1
-    assert room['players'][ids[0]]['achievements']['busts'] == 1
+    assert room['players'][ids[0]]['stack'] > 0  # Squid receipts arrive before bust detection.
+    assert room['players'][ids[0]]['achievements']['busts'] == 0
     assert sum(p['stack'] for p in room['players'].values()) == 162
 
 

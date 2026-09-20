@@ -17,6 +17,11 @@ def migrate(room):
         if key not in room:
             room[key] = value
             changed = True
+    # Only unfinished rounds adopt the single-token rule; settled ledgers stay intact.
+    for m in (room.get('squid_round') or {}).get('members', []):
+        if m['count'] > 1:
+            m['count'] = 1
+            changed = True
     return changed
 
 
@@ -92,9 +97,9 @@ def finish_hand(room, hand, now):
     current['amount'] = config['amount']
     winner = first_main_winner(hand)
     winner_member = member(room, winner)
-    if winner_member is None:
+    if winner_member is None or winner_member['count']:
         return None
-    winner_member['count'] += 1
+    winner_member['count'] = 1
     if config['reveal']:
         hand['revealed'] = list(dict.fromkeys([*hand['revealed'], winner]))
     award = dict(pid=winner, name=room['players'][winner]['name'], count=winner_member['count'],
@@ -102,7 +107,7 @@ def finish_hand(room, hand, now):
                  issued=sum(m['count'] for m in current['members']), at=now,
                  id=f"{room['id']}:{hand['number']}:squid")
     event = dict(award=award, settlement=None)
-    if award['issued'] < current['total']:
+    if sum(m['count'] == 0 for m in current['members']) != 1:
         return event
     holders = [m for m in current['members'] if m['count']]
     weights = [m['count'] for m in holders]
