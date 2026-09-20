@@ -38,10 +38,12 @@ import { RunoutEquity } from "./RunoutEquity";
 import { FlipNumber, SettlementLayer, settlementBalances, useMotionBaseline } from "./settlement";
 import { AchievementBadges, AchievementDetails } from "./Achievements";
 import { BountyCelebration, BountyRules } from "./Bounty";
+import { ShortDeckRules } from "./ShortDeck";
 import { SquidRules, SquidDetails, SquidNotice, SquidCelebration, SquidSettlementView } from "./Squid";
 import "./styles.css";
 
 const defaults: Config = {
+  short_deck: false,
   sb: 1,
   bb: 2,
   timebank: 10,
@@ -270,6 +272,7 @@ function ConfigFields({
 }) {
   const [rules, setRules] = useState(false);
   const [squidRules, setSquidRules] = useState(false);
+  const [shortDeckRules, setShortDeckRules] = useState(false);
   const configId = useId();
   const field = (
     key: keyof Config,
@@ -322,9 +325,17 @@ function ConfigFields({
         />
       </label>
       <div className="switch-row bounty-option">
+        <label htmlFor={`${configId}-short-deck`}>短牌模式</label>
+        <IconButton title="短牌规则" onClick={() => setShortDeckRules(true)}><Info size={17} /></IconButton>
+        <input id={`${configId}-short-deck`} type="checkbox" role="switch" checked={!!value.short_deck}
+          onChange={e => change({ ...value, short_deck: e.target.checked,
+            bounty: e.target.checked ? false : value.bounty })} />
+      </div>
+      {value.short_deck && <p className="bounty-config-note" role="status">短牌模式下，2–7 奖励自动关闭且不可开启。金额保留，切回普通后需手动开启。</p>}
+      <div className="switch-row bounty-option">
         <label htmlFor={`${configId}-bounty`}>2–7 杂色奖励</label>
         <IconButton title="2–7 奖励规则" onClick={() => setRules(true)}><Info size={17} /></IconButton>
-        <input id={`${configId}-bounty`} type="checkbox" role="switch" checked={!!value.bounty}
+        <input id={`${configId}-bounty`} type="checkbox" role="switch" checked={!!value.bounty} disabled={!!value.short_deck}
           onChange={e => change({ ...value, bounty: e.target.checked,
             bounty_amount: value.bounty_amount ?? (e.target.checked ? value.bb : null) })} />
       </div>
@@ -345,7 +356,8 @@ function ConfigFields({
             onChange={e => change({ ...value, squid_reveal: e.target.checked })} />
         </label>
       </>}
-      {playing && <p className="bounty-config-note">2–7 奖励和鱿鱼设置从下一手生效，当前手保持原规则。其他设置请在这手结束后修改。</p>}
+      {playing && <p className="bounty-config-note">短牌、2–7 奖励和鱿鱼设置从下一手生效，当前手（含已开始的 Straddle 询问）保持原规则。其他设置请在这手结束后修改。</p>}
+      {shortDeckRules && <Modal title="短牌规则" close={() => setShortDeckRules(false)}><ShortDeckRules /></Modal>}
       {squidRules && <Modal title="鱿鱼游戏规则" close={() => setSquidRules(false)}><SquidRules /></Modal>}
       {rules && <Modal title="2–7 杂色奖励规则" close={() => setRules(false)}><BountyRules /></Modal>}
     </div>
@@ -1124,6 +1136,8 @@ function RoomScreen({
   const presentationActive = !!hand?.presentation && now < hand.presentation.until;
   const presentationBalances = presentationActive ? settlementBalances(hand!.presentation!, now) : {};
   const configPlaying = !!active || room.phase === 'straddle';
+  const currentShortDeck = room.short_deck_current ?? hand?.short_deck ?? !!room.settings.short_deck;
+  const pendingShortDeck = currentShortDeck !== !!room.settings.short_deck;
   const currentBounty = room.bounty_current || { enabled: !!room.settings.bounty, amount: room.settings.bounty_amount };
   const pendingBounty = configPlaying && (currentBounty.enabled !== !!room.settings.bounty ||
     (room.settings.bounty && currentBounty.amount !== room.settings.bounty_amount));
@@ -1268,6 +1282,13 @@ function RoomScreen({
           <span className="room-id">#{rid.slice(0, 6)}</span>
         </div>
         <div className="room-meta">
+          <div className="short-deck-status">
+            <button type="button" className="short-deck-tag" onClick={() => setModal('short-deck-rules')}
+              aria-label={`当前模式：${currentShortDeck ? '短牌' : '普通'}，查看短牌规则`}>
+              <span>{hand || room.phase === 'straddle' ? '本手' : '模式'}：{currentShortDeck ? '短牌' : '普通'} <Info size={12} /></span>
+              {pendingShortDeck && <span className="short-deck-pending" role="status">下一手：{room.settings.short_deck ? '短牌' : '普通'}</span>}
+            </button>
+          </div>
           <span>
             {room.settings.sb}/{room.settings.bb}
           </span>
@@ -1544,7 +1565,7 @@ function RoomScreen({
                     onClick={() => showHistory(h.number)}
                   >
                     <b>第 {h.number} 手</b>
-                    <span>{h.runouts === 2 ? "发两次" : "常规"}</span>
+                    <span>{h.short_deck ? "短牌" : "普通"}{h.runouts === 2 ? " · 发两次" : ""}</span>
                     <ChevronDown size={16} />
                   </button>
                   <div className="history-board">
@@ -2162,7 +2183,7 @@ function RoomScreen({
             onSubmit={(e) => {
               e.preventDefault();
               send({ type: "settings", settings: configPlaying
-                ? { bounty: config.bounty, bounty_amount: config.bounty_amount, squid: !!config.squid,
+                ? { short_deck: !!config.short_deck, bounty: config.bounty, bounty_amount: config.bounty_amount, squid: !!config.squid,
                     squid_amount: config.squid_amount ?? null, squid_reveal: !!config.squid_reveal } : config }, true);
             }}
           >
@@ -2171,13 +2192,14 @@ function RoomScreen({
               className="primary wide"
               disabled={busy}
             >
-              {configPlaying ? "保存奖励配置 · 下一手生效" : "保存配置"}
+              {configPlaying ? "保存规则配置 · 下一手生效" : "保存配置"}
             </button>
           </form>
         </Modal>
       )}
       {modal === 'squid' && <Modal title="鱿鱼游戏" close={() => setModal(null)}><SquidDetails room={room} /></Modal>}
       {modal === 'bounty-rules' && <Modal title="2–7 杂色奖励规则" close={() => setModal(null)}><BountyRules /></Modal>}
+      {modal === 'short-deck-rules' && <Modal title="短牌规则" close={() => setModal(null)}><ShortDeckRules /></Modal>}
       {modal === "player" && target && (
         <Modal title={target.name} close={() => setModal(null)}>
           {target.cards.length > 0 && (

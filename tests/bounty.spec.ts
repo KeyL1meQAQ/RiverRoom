@@ -86,8 +86,8 @@ test('playing room can edit only bounty and sends a patch without overriding oth
   await expect(page.getByRole('switch', { name: '允许发两次牌' })).toBeDisabled();
   await expect(page.getByLabel('每人奖励筹码')).toBeEnabled();
   await page.getByLabel('每人奖励筹码').fill('12');
-  await page.getByRole('button', { name: '保存奖励配置 · 下一手生效' }).click();
-  expect(sent?.settings).toEqual({ bounty: true, bounty_amount: 12, squid: false, squid_amount: null, squid_reveal: false });
+  await page.getByRole('button', { name: '保存规则配置 · 下一手生效' }).click();
+  expect(sent?.settings).toEqual({ short_deck: false, bounty: true, bounty_amount: 12, squid: false, squid_amount: null, squid_reveal: false });
   state.settings.bounty_amount = 12;
   push(state);
   await expect(page.locator('.bounty-tag')).toContainText('每人 5');

@@ -20,31 +20,35 @@ def card(code):
 @lru_cache(maxsize=1)
 def library():
     lib = CDLL(str(Path(__file__).with_name('_runout_odds.so')))
-    lib.rr_count.argtypes = [POINTER(c_int), c_int, POINTER(c_int), c_int,
-                            POINTER(c_int), c_int, POINTER(c_uint64)]
-    lib.rr_count.restype = c_uint64
+    lib.rr_count_variant.argtypes = [POINTER(c_int), c_int, POINTER(c_int), c_int,
+                                    POINTER(c_int), c_int, c_int, POINTER(c_uint64)]
+    lib.rr_count_variant.restype = c_uint64
     lib.rr_rank7.argtypes = [POINTER(c_int)]
     lib.rr_rank7.restype = c_uint32
+    lib.rr_rank7_short_deck.argtypes = [POINTER(c_int)]
+    lib.rr_rank7_short_deck.restype = c_uint32
     return lib
 
 
 @lru_cache(maxsize=512)
-def count_wins(holes, board, dead=()):
+def count_wins(holes, board, dead=(), short_deck=False):
     """Enumerate every remaining board once, returning (win counts, total)."""
     if not 2 <= len(holes) <= 9 or any(len(h) != 2 for h in holes) or len(board) > 5:
         raise ValueError('Invalid runout')
     active = tuple(c for h in holes for c in h) + board
     if len(set(active + dead)) != len(active + dead):
         raise ValueError('Duplicate card')
-    if 52 - len(active + dead) < 5 - len(board):
+    if (36 if short_deck else 52) - len(active + dead) < 5 - len(board):
         raise ValueError('Not enough remaining cards')
     encoded = [card(c) for c in active + dead]
+    if short_deck and any(c < 16 for c in encoded):
+        raise ValueError('Invalid short deck card')
     hole_count = len(holes) * 2
     hole_array = (c_int * hole_count)(*encoded[:hole_count])
     board_array = (c_int * len(board))(*encoded[hole_count:len(active)])
     dead_array = (c_int * len(dead))(*encoded[len(active):])
     wins = (c_uint64 * len(holes))()
-    total = library().rr_count(hole_array, len(holes), board_array, len(board), dead_array, len(dead), wins)
+    total = library().rr_count_variant(hole_array, len(holes), board_array, len(board), dead_array, len(dead), short_deck, wins)
     return tuple(wins), total
 
 
@@ -57,7 +61,7 @@ def rates_for_prefix(hand, board_index, count, burns):
             | {c for b in hand['boards'][:board_index] for c in b})
     # Shared prefixes count once. Future cards in this/next board do not enter.
     dead = tuple(sorted(used - known))
-    wins, total = count_wins(holes, board, dead)
+    wins, total = count_wins(holes, board, dead, hand.get('short_deck', False))
     return dict(total=total, wins=dict(zip(players, wins)))
 
 

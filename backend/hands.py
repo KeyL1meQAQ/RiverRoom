@@ -2,7 +2,7 @@
 from collections import Counter
 from functools import lru_cache
 
-from pokerkit import Label, StandardHighHand
+from pokerkit import Label, ShortDeckHoldemHand, StandardHighHand
 
 RANKS = '23456789TJQKA'
 LABELS = {
@@ -13,9 +13,10 @@ LABELS = {
 
 
 @lru_cache(maxsize=8192)
-def describe(holes, board):
+def describe(holes, board, short_deck=False):
     # Board-first tie selection keeps a playable board highlighted on its own.
-    best = StandardHighHand.from_game_or_none(''.join(board), ''.join(holes))
+    hand_type = ShortDeckHoldemHand if short_deck else StandardHighHand
+    best = hand_type.from_game_or_none(''.join(board), ''.join(holes))
     cards = tuple(repr(c) for c in best.cards) if best else board + holes
     counts = Counter(c[0] for c in cards)
     ranked = sorted(counts, key=RANKS.index, reverse=True)
@@ -41,7 +42,7 @@ def own_labels(hand, viewer):
     holes = tuple(hand['dealt'].get(viewer, []))
     if len(holes) != 2:
         return []
-    return [[describe(holes, tuple(board[:count]))[0] for count in range(len(board) + 1)]
+    return [[describe(holes, tuple(board[:count]), hand.get('short_deck', False))[0] for count in range(len(board) + 1)]
             for board in hand.get('boards', [[]])]
 
 
@@ -50,7 +51,7 @@ def public_labels(hand):
         return {}
     # Only public hole cards may contribute to a shared hand description.
     return {
-        pid: [describe(tuple(holes), tuple(board))[0] for board in hand.get('boards', [[]])]
+        pid: [describe(tuple(holes), tuple(board), hand.get('short_deck', False))[0] for board in hand.get('boards', [[]])]
         for pid, holes in hand['dealt'].items()
         if len(holes) == 2 and (pid in hand['revealed'] or
                                set(hand.get('shown_cards', {}).get(pid, [])) == {0, 1})
@@ -84,7 +85,7 @@ def showdown_results(hand):
             # Historical records must obey the original public-card boundary.
             if pid not in hand['revealed']:
                 continue
-            label, cards = describe(tuple(hand['dealt'][pid]), tuple(board))
+            label, cards = describe(tuple(hand['dealt'][pid]), tuple(board), hand.get('short_deck', False))
             previous = next((w for w in group['winners'] if w['pid'] == pid), None)
             if previous:
                 previous['amount'] += award['amounts'][i]
@@ -101,10 +102,11 @@ def runout_results(hand, state, board_index=0):
     pots = hand.get('pots') or [dict(amount=p.amount, eligible=[hand['ids'][i] for i in p.player_indices])
                                for p in state.pots]
     folded = set(hand.get('folded', []))
+    hand_type = ShortDeckHoldemHand if hand.get('short_deck', False) else StandardHighHand
     result = []
     for index, pot in enumerate(pots):
         eligible = [pid for pid in pot['eligible'] if pid in hand['revealed'] and pid not in folded]
-        ranked = {pid: StandardHighHand.from_game_or_none(''.join(board), ''.join(hand['dealt'][pid]))
+        ranked = {pid: hand_type.from_game_or_none(''.join(board), ''.join(hand['dealt'][pid]))
                   for pid in eligible}
         best = max((value for value in ranked.values() if value is not None), default=None)
         winners = [pid for pid in hand['ids'] if pid in ranked and best is not None and ranked[pid] == best]
@@ -113,6 +115,6 @@ def runout_results(hand, state, board_index=0):
         share = pot['amount'] // 2 + (pot['amount'] % 2 if board_index == 0 else 0)
         q, remainder = divmod(share, len(winners))
         result.append(dict(board=board_index, pot=index, winners=[
-            dict(pid=pid, amount=q + (i < remainder), label=describe(tuple(hand['dealt'][pid]), board)[0],
-                 cards=list(describe(tuple(hand['dealt'][pid]), board)[1])) for i, pid in enumerate(winners)]))
+            dict(pid=pid, amount=q + (i < remainder), label=describe(tuple(hand['dealt'][pid]), board, hand.get('short_deck', False))[0],
+                 cards=list(describe(tuple(hand['dealt'][pid]), board, hand.get('short_deck', False))[1])) for i, pid in enumerate(winners)]))
     return result

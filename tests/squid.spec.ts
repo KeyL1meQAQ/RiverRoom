@@ -66,8 +66,8 @@ test('midhand settings send squid fields and show effective and pending rules', 
   await page.getByRole('button', { name: '鱿鱼游戏规则', exact: true }).click();
   await page.keyboard.press('Escape');
   await expect(page.locator('dialog[open]')).toHaveCount(1);
-  await page.getByRole('button', { name: '保存奖励配置 · 下一手生效' }).click();
-  expect(sent?.settings).toEqual({ bounty: false, bounty_amount: null, squid: true, squid_amount: 25, squid_reveal: true });
+  await page.getByRole('button', { name: '保存规则配置 · 下一手生效' }).click();
+  expect(sent?.settings).toEqual({ short_deck: false, bounty: false, bounty_amount: null, squid: true, squid_amount: 25, squid_reveal: true });
   state.settings.squid_amount = 25;
   state.settings.squid_reveal = true;
   push(state);

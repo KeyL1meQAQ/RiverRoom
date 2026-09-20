@@ -3,7 +3,7 @@ from collections import deque
 from dataclasses import dataclass, field, replace
 import secrets
 
-from pokerkit import Automation, Card, ChipsPushing, Deck, Folding, Mode, NoLimitTexasHoldem, Pot, State
+from pokerkit import Automation, Card, ChipsPushing, Deck, Folding, Mode, NoLimitShortDeckHoldem, NoLimitTexasHoldem, Pot, State
 
 AUTOMATIONS = (Automation.ANTE_POSTING, Automation.BLIND_OR_STRADDLE_POSTING, Automation.BET_COLLECTION)
 RULES_VERSION = 2
@@ -83,10 +83,10 @@ def pot_winners(state, pot, board):
     return [i for i in eligible if hands[i] == best] if best else []
 
 
-def new_hand(ids, seats, stacks, blinds, big_blind, number):
-    deck = list(Deck.STANDARD)
+def new_hand(ids, seats, stacks, blinds, big_blind, number, short_deck=False):
+    deck = list(Deck.SHORT_DECK_HOLDEM if short_deck else Deck.STANDARD)
     secrets.SystemRandom().shuffle(deck)
-    return dict(number=number, rules_version=RULES_VERSION, presentation_version=1, ids=ids, seats=seats, initial=stacks, blinds=blinds,
+    return dict(number=number, short_deck=short_deck, rules_version=RULES_VERSION, presentation_version=1, ids=ids, seats=seats, initial=stacks, blinds=blinds,
                 big_blind=big_blind, deck=[repr(c) for c in deck], ops=[], dealt={},
                 revealed=[], shown_cards={}, showdown_order=[], reveal_version=1,
                 votes={}, runouts=None, awards=[], result=None,
@@ -95,11 +95,12 @@ def new_hand(ids, seats, stacks, blinds, big_blind, number):
 
 def state_for(hand):
     version = hand.get('rules_version', 1)
+    game_type = NoLimitShortDeckHoldem if hand.get('short_deck', False) else NoLimitTexasHoldem
     if version == 1:
-        state = NoLimitTexasHoldem.create_state(AUTOMATIONS, True, 0, hand['blinds'],
+        state = game_type.create_state(AUTOMATIONS, True, 0, hand['blinds'],
             hand['big_blind'], hand['initial'], len(hand['ids']), mode=Mode.CASH_GAME)
     elif version == RULES_VERSION:
-        game = NoLimitTexasHoldem(AUTOMATIONS, True, 0, hand['blinds'], hand['big_blind'], mode=Mode.CASH_GAME)
+        game = game_type(AUTOMATIONS, True, 0, hand['blinds'], hand['big_blind'], mode=Mode.CASH_GAME)
         state = RiverState(game.automations, game.deck, game.hand_types, game.streets,
             game.betting_structure, game.ante_trimming_status, game.raw_antes,
             game.raw_blinds_or_straddles, game.bring_in, hand['initial'], len(hand['ids']),

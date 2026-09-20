@@ -6,7 +6,7 @@ from . import achievements, bounty, engine, equity, hands, squid, settlement
 
 MAX_INTEGER = 9_007_199_254_740_991
 RUNOUT_STREET_PAUSE = 1.5
-DEFAULTS = dict(sb=1, bb=2, timebank=10, refill=20, straddle=False, twice=False,
+DEFAULTS = dict(sb=1, bb=2, timebank=10, refill=20, straddle=False, twice=False, short_deck=False,
                 bounty=False, bounty_amount=None, squid=False, squid_amount=None, squid_reveal=False)
 
 
@@ -41,6 +41,8 @@ def settings(value):
     integer(result['refill'], 1, 10000)
     require(type(result['straddle']) is bool and type(result['twice']) is bool, '开关格式不正确')
     require(type(result['bounty']) is bool, '奖励开关格式不正确')
+    require(type(result['short_deck']) is bool, '短牌开关格式不正确')
+    require(not (result['short_deck'] and result['bounty']), '短牌模式与2–7杂色奖励不能同时开启')
     if result['bounty_amount'] is None and result['bounty']:
         result['bounty_amount'] = result['bb']
     if result['bounty_amount'] is not None:
@@ -61,6 +63,14 @@ def migrate_bounty(room):
             room['settings'][key] = DEFAULTS[key]
             changed = True
     return changed
+
+
+def migrate_short_deck(room):
+    # Missing per-hand/offer fields mean standard poker, never room.settings.
+    if 'short_deck' not in room['settings']:
+        room['settings']['short_deck'] = False
+        return True
+    return False
 
 
 def log(room, text, now, kind='game'):
@@ -221,7 +231,8 @@ def begin_next(room, now):
         return
     pos = positions(room, players)
     room['straddle_offer'] = {**pos, 'pid': None, 'bounty_rule': bounty.rule(room['settings']),
-                             'squid_rule': squid.rule(room['settings'])}
+                             'squid_rule': squid.rule(room['settings']),
+                             'short_deck': room['settings'].get('short_deck', False)}
     utg_seat = next_seat([p['seat'] for p in players], pos['bb'])
     utg = next(p for p in players if p['seat'] == utg_seat)
     if room['settings']['straddle'] and len(players) >= 3 and utg['online'] and utg['stack'] >= 2 * room['settings']['bb']:
@@ -251,13 +262,14 @@ def deal(room, now, straddle):
     room['number'] += 1
     room.update(button=offer['button'], small_blind=offer['sb'], big_blind=offer['bb'])
     room['hand'] = engine.new_hand(offer['ids'], [p['seat'] for p in players],
-        [p['stack'] for p in players], blinds, config['bb'], room['number'])
+        [p['stack'] for p in players], blinds, config['bb'], room['number'], offer.get('short_deck', False))
     room['hand']['button'] = offer['button']
     room['hand']['allow_twice'] = config['twice']
     room['hand']['bounty_rule'] = copy.deepcopy(offer.get('bounty_rule', bounty.rule({})))
     squid.begin_hand(room, room['hand'], offer.get('squid_rule', squid.rule({})), now)
     room.update(straddle_offer=None, deadline=None)
-    log(room, f"第 {room['number']} 手开始 · 盲注 {config['sb']}/{config['bb']}", now)
+    mode = '短牌' if room['hand']['short_deck'] else '普通'
+    log(room, f"第 {room['number']} 手开始 · {mode} · 盲注 {config['sb']}/{config['bb']}", now)
     progress_hand(room, engine.state_for(room['hand']), now)
 
 
@@ -548,15 +560,19 @@ def command(room, pid, data, now):
         require(isinstance(patch, dict), '房间配置格式不正确')
         playing = bool(room['hand'] and room['hand']['result'] is None) or room['phase'] == 'straddle'
         if playing:
-            require(set(patch) <= {'bounty', 'bounty_amount', 'squid', 'squid_amount', 'squid_reveal'},
-                    '本手进行中只能调整2-7奖励和鱿鱼规则，其他配置请在两手之间修改')
+            require(set(patch) <= {'bounty', 'bounty_amount', 'squid', 'squid_amount', 'squid_reveal', 'short_deck'},
+                    '本手进行中只能调整短牌、2-7奖励和鱿鱼规则，其他配置请在两手之间修改')
         updated = settings({**room['settings'], **patch})
+        old_short_deck = room['settings'].get('short_deck', False)
         old_squid = squid.rule(room['settings'])
         old_rule = bounty.rule(room['settings'])
         room['settings'] = updated
         for player in room['players'].values():
             player['bank'] = min(player['bank'], updated['timebank'])
         log(room, '房主更新房间配置', now, 'room')
+        if old_short_deck != updated['short_deck']:
+            mode = '短牌' if updated['short_deck'] else '普通'
+            log(room, f'牌局模式改为{mode} · 下一手生效', now, 'room')
         if old_rule != bounty.rule(updated):
             state_text = f"开启 · 每人 {updated['bounty_amount']}" if updated['bounty'] else '关闭'
             log(room, f'2-7奖励 {state_text} · 下一手生效', now, 'room')
@@ -746,7 +762,7 @@ def migrate_reveals(room):
 def public_hand(hand, viewer, include_hint=False):
     if not hand:
         return None
-    return dict(number=hand['number'], ids=hand['ids'], seats=hand['seats'], button=hand.get('button'),
+    return dict(number=hand['number'], short_deck=hand.get('short_deck', False), ids=hand['ids'], seats=hand['seats'], button=hand.get('button'),
         boards=hand.get('boards', [[]]), cards={pid: visible_cards(hand, pid, viewer) for pid in hand['dealt']
         if pid == viewer or shown_indices(hand, pid)}, revealed=hand['revealed'],
         shown_cards={pid: shown_indices(hand, pid) for pid in hand['dealt'] if shown_indices(hand, pid)},
@@ -790,6 +806,8 @@ def view(room, viewer, now):
     result = {k: copy.deepcopy(room[k]) for k in ('id', 'name', 'settings', 'owner', 'phase', 'deadline',
               'button', 'small_blind', 'big_blind', 'number', 'started', 'paused', 'recovery', 'closing', 'closed_at', 'version')}
     result.update(me=viewer, players=players, achievement_since=room['achievement_since'].copy(),
+        short_deck_current=(room['straddle_offer'].get('short_deck', False) if room.get('straddle_offer')
+                            else hand.get('short_deck', False) if hand else room['settings'].get('short_deck', False)),
         squid_round=copy.deepcopy(room.get('squid_round')),
         squid_history=copy.deepcopy(room.get('squid_history', [])[-100:]),
         squid_current=copy.deepcopy((room.get('straddle_offer') or {}).get('squid_rule', squid.rule({})))

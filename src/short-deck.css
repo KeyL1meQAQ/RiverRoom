@@ -1,0 +1,12 @@
+.room-info .short-deck-status { flex: 0 0 auto; }
+.short-deck-tag {
+  display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 0;
+  min-height: 26px; padding: 0 2px; border: 0; background: transparent;
+  color: #5b6d60; font-size: 11px; line-height: 13px; white-space: nowrap;
+}
+.short-deck-tag > span { display: flex; align-items: center; gap: 3px; }
+.short-deck-pending { color: #79602a; }
+@media (max-width: 760px) {
+  .short-deck-tag { font-size: 10px; }
+  .room-info > div:first-child { min-width: 0; }
+}

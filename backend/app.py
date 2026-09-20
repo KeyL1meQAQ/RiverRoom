@@ -43,6 +43,7 @@ class Service:
             old = room['version']
             migrated = game.migrate_reveals(room)
             migrated = game.migrate_bounty(room) or migrated
+            migrated = game.migrate_short_deck(room) or migrated
             migrated = game.squid.migrate(room) or migrated
             migrated = achievements.migrate(room) or migrated
             migrated = achievements.retry_pending(room) or migrated

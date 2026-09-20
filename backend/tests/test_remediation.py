@@ -11,9 +11,9 @@ from backend.tests.test_game import action, table
 from backend.tests.test_achievements import allin_table
 
 
-def allin_hand(stacks, holes, board, board2, version=2):
+def allin_hand(stacks, holes, board, board2, version=2, short_deck=False):
     hand = engine.new_hand([str(i) for i in range(len(stacks))], list(range(len(stacks))),
-                           stacks, [1, 2] + [0] * (len(stacks) - 2), 2, 1)
+                           stacks, [1, 2] + [0] * (len(stacks) - 2), 2, 1, short_deck)
     if version == 1:
         hand.pop('rules_version')
     dealt = [c for column in zip(*holes) for c in column]

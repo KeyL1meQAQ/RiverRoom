@@ -21,6 +21,7 @@ export function BountyRules() {
       <li><strong>自动亮牌：</strong>获得奖励时，会向所有人公开你的两张底牌，无需手动领取。</li>
       <li><strong>筹码不足不欠账：</strong>先分配底池，再从桌上筹码支付奖励。余额不足就付清剩余筹码，赢家收到的是实际支付的总额。</li>
       <li><strong>设置修改从下一手生效：</strong>当前手仍按原来的奖励规则进行。</li>
+      <li><strong>短牌模式不能开启此奖励：</strong>短牌没有 2；开启短牌会自动关闭奖励，金额保留，切回普通后需手动重新开启。</li>
     </ul>
     <details className="rules-more"><summary>更多规则</summary>
       <ul>

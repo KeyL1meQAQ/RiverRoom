@@ -1,4 +1,5 @@
 export type Config = {
+  short_deck?: boolean;
   sb: number;
   bb: number;
   timebank: number;
@@ -64,6 +65,7 @@ export type JoinRequest = {
   approved: boolean;
 };
 export type Hand = {
+  short_deck?: boolean;
   number: number;
   ids: string[];
   seats: number[];
@@ -131,6 +133,7 @@ export type Ledger = {
   reverses: string | null;
 };
 export type Room = {
+  short_deck_current?: boolean;
   id: string;
   name: string;
   settings: Config;

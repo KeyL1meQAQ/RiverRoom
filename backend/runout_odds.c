@@ -5,10 +5,11 @@
 #include <stdint.h>
 #include <string.h>
 
-static unsigned straight(unsigned mask) {
+static unsigned straight(unsigned mask, int short_deck) {
     unsigned runs = mask & (mask >> 1) & (mask >> 2) & (mask >> 3) & (mask >> 4);
     if (runs) return 31u - (unsigned)__builtin_clz(runs) + 6u;
-    return (mask & 0x100fu) == 0x100fu ? 5u : 0u;
+    unsigned wheel = short_deck ? 0x10f0u : 0x100fu;
+    return (mask & wheel) == wheel ? (short_deck ? 9u : 5u) : 0u;
 }
 static unsigned top(unsigned mask, int n) {
     unsigned value = 0;
@@ -19,7 +20,7 @@ static unsigned top(unsigned mask, int n) {
     }
     return value;
 }
-static uint32_t rank7(const int *cards) {
+static uint32_t rank7(const int *cards, int short_deck) {
     unsigned suits[4] = {0}, counts[13] = {0}, mask = 0;
     for (int i = 0; i < 7; ++i) {
         unsigned r = (unsigned)cards[i] / 4, s = (unsigned)cards[i] % 4;
@@ -27,7 +28,7 @@ static uint32_t rank7(const int *cards) {
     }
     unsigned flush = 0;
     for (int s = 0; s < 4; ++s) if (__builtin_popcount(suits[s]) >= 5) {
-        unsigned high = straight(suits[s]);
+        unsigned high = straight(suits[s], short_deck);
         if (high) return (8u << 24) | high;
         flush = suits[s];
     }
@@ -38,10 +39,11 @@ static uint32_t rank7(const int *cards) {
         if (counts[r] >= 2) pairs |= 1u << r;
     }
     unsigned trip = trips ? 31u - (unsigned)__builtin_clz(trips) : 0;
+    if (flush && short_deck) return (6u << 24) | top(flush, 5);
     if (trips && (pairs & ~(1u << trip)))
-        return (6u << 24) | ((trip + 2u) << 4) | top(pairs & ~(1u << trip), 1);
+        return ((short_deck ? 5u : 6u) << 24) | ((trip + 2u) << 4) | top(pairs & ~(1u << trip), 1);
     if (flush) return (5u << 24) | top(flush, 5);
-    unsigned high = straight(mask);
+    unsigned high = straight(mask, short_deck);
     if (high) return (4u << 24) | high;
     if (trips) return (3u << 24) | ((trip + 2u) << 8) | top(mask & ~(1u << trip), 2);
     if (__builtin_popcount(pairs) >= 2) {
@@ -52,11 +54,12 @@ static uint32_t rank7(const int *cards) {
     if (pairs) return (1u << 24) | (top(pairs, 1) << 12) | top(mask & ~pairs, 3);
     return top(mask, 5);
 }
-uint32_t rr_rank7(const int *cards) { return rank7(cards); }
+uint32_t rr_rank7(const int *cards) { return rank7(cards, 0); }
+uint32_t rr_rank7_short_deck(const int *cards) { return rank7(cards, 1); }
 
 typedef struct {
     const int *holes;
-    int players, remaining[52], remaining_count, cards[7];
+    int players, short_deck, remaining[52], remaining_count, cards[7];
     uint64_t total, wins[9];
 } Enumeration;
 static void visit(Enumeration *ctx) {
@@ -64,7 +67,7 @@ static void visit(Enumeration *ctx) {
     int winner = -1;
     for (int p = 0; p < ctx->players; ++p) {
         ctx->cards[5] = ctx->holes[p * 2]; ctx->cards[6] = ctx->holes[p * 2 + 1];
-        uint32_t value = rank7(ctx->cards);
+        uint32_t value = rank7(ctx->cards, ctx->short_deck);
         if (value > best) { best = value; winner = p; }
         else if (value == best) winner = -1;
     }
@@ -78,14 +81,15 @@ static void enumerate(Enumeration *ctx, int position, int begin) {
         enumerate(ctx, position + 1, i + 1);
     }
 }
-uint64_t rr_count(const int *holes, int players, const int *board, int board_count,
-                  const int *dead, int dead_count, uint64_t *wins) {
-    Enumeration ctx = {.holes = holes, .players = players};
+uint64_t rr_count_variant(const int *holes, int players, const int *board, int board_count,
+                  const int *dead, int dead_count, int short_deck, uint64_t *wins) {
+    Enumeration ctx = {.holes = holes, .players = players, .short_deck = short_deck};
     uint64_t used = 0;
     for (int i = 0; i < players * 2; ++i) used |= (uint64_t)1 << holes[i];
     for (int i = 0; i < board_count; ++i) { used |= (uint64_t)1 << board[i]; ctx.cards[i] = board[i]; }
     for (int i = 0; i < dead_count; ++i) used |= (uint64_t)1 << dead[i];
-    for (int c = 0; c < 52; ++c) if (!(used & ((uint64_t)1 << c))) ctx.remaining[ctx.remaining_count++] = c;
+    for (int c = short_deck ? 16 : 0; c < 52; ++c)
+        if (!(used & ((uint64_t)1 << c))) ctx.remaining[ctx.remaining_count++] = c;
     enumerate(&ctx, board_count, 0);
     memcpy(wins, ctx.wins, sizeof(uint64_t) * players);
     return ctx.total;
