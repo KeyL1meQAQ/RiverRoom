@@ -121,9 +121,12 @@ class Service:
 
     async def loop(self):
         while True:
-            await asyncio.sleep(0.5)
-            now = time.time()
+            hold_deadlines = [r['deadline'] for r in self.rooms.values()
+                              if r['phase'] == 'action_hold' and not r['recovery'] and not r['closed_at']]
+            delay = min(0.5, max(0.01, min(hold_deadlines) - time.time())) if hold_deadlines else 0.5
+            await asyncio.sleep(delay)
             for rid in list(self.rooms):
+                now = time.time()
                 room = self.rooms[rid]
                 if room['closed_at'] and now - room['closed_at'] >= 30 * 86400:
                     self.store.remove(rid)

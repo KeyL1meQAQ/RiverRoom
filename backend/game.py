@@ -6,6 +6,7 @@ from . import achievements, bounty, engine, equity, hands, squid, settlement
 
 MAX_INTEGER = 9_007_199_254_740_991
 RUNOUT_STREET_PAUSE = 1.5
+LAST_ACTION_PAUSE = 1.5
 DEFAULTS = dict(sb=1, bb=2, timebank=10, refill=20, straddle=False, twice=False, short_deck=False,
                 bounty=False, bounty_amount=None, squid=False, squid_amount=None, squid_reveal=False)
 
@@ -290,6 +291,7 @@ def consume_bank(room, now):
 
 def progress_hand(room, state, now):
     hand = room['hand']
+    hand.pop('action_display', None)
     old_boards = hand.get('boards', [[]])
     before_burns = tuple(map(repr, state.burn_cards))
     previous_equity = hand.get('runout_equity')
@@ -424,6 +426,33 @@ def close_room(room, now):
     log(room, '房间已结束，全部筹码已结算', now, 'room')
 
 
+def betting_step(hand, state, name, *args):
+    # PokerKit collects bets and returns uncalled chips within the final action.
+    # Capture the submitted action before those automatic presentation changes.
+    actor = state.actor_index
+    display = dict(bets=list(state.bets), stacks=list(state.stacks))
+    amount = (state.checking_or_calling_amount if name == 'check_or_call' else
+              args[0] - state.bets[actor] if name == 'complete_bet_or_raise_to' else 0)
+    display['pot'] = state.total_pot_amount + amount
+    engine.step(hand, state, name, *args)
+    display['bets'][actor] += amount
+    display['stacks'][actor] -= amount
+    return display
+
+
+def progress_action(room, state, display, now):
+    hand = room['hand']
+    if state.actor_index is not None:
+        progress_hand(room, state, now)
+        return
+    if hand['allow_twice'] and hand['runouts'] is None and list(state.runout_count_selector_indices):
+        progress_hand(room, state, now)
+    else:
+        room.update(phase='action_hold', deadline=now + LAST_ACTION_PAUSE)
+        hand.update(clock=None, deal=None)
+    hand['action_display'] = display
+
+
 def act(room, pid, data, now):
     hand = room['hand']
     require(room['phase'] == 'betting' and not room['recovery'], '当前不能进行下注操作')
@@ -436,26 +465,26 @@ def act(room, pid, data, now):
     kind = data.get('action')
     if kind == 'fold':
         require(state.can_fold(), '当前不能弃牌')
-        engine.step(hand, state, 'fold')
+        display = betting_step(hand, state, 'fold')
         label = '弃牌'
         table_label = '弃牌'
     elif kind == 'call':
         amount = state.checking_or_calling_amount
-        engine.step(hand, state, 'check_or_call')
+        display = betting_step(hand, state, 'check_or_call')
         label = f'跟注 {amount}' if amount else '过牌'
         table_label = '跟注' if amount else '过牌'
     elif kind == 'raise':
         amount = integer(data.get('amount'), 1)
         require(state.can_complete_bet_or_raise_to(amount), '加注金额或加注权不合法')
         table_label = '加注' if max(state.bets) else '下注'
-        engine.step(hand, state, 'complete_bet_or_raise_to', amount)
+        display = betting_step(hand, state, 'complete_bet_or_raise_to', amount)
         label = f'下注 / 加注到 {amount}'
     else:
         raise GameError('未知行动')
     consume_bank(room, now)
-    hand['last_actions'][pid] = '全下' if kind != 'fold' and state.stacks[actor_index] == 0 else table_label
+    hand['last_actions'][pid] = '全下' if kind != 'fold' and display['stacks'][actor_index] == 0 else table_label
     log(room, f"{room['players'][pid]['name']} {label}", now)
-    progress_hand(room, state, now)
+    progress_action(room, state, display, now)
 
 
 def command(room, pid, data, now):
@@ -544,6 +573,8 @@ def command(room, pid, data, now):
                 set_clock(room, engine.state_for(room['hand']), now)
             elif room['phase'] == 'dealing':
                 complete_deal(room, now)
+            elif room['phase'] == 'action_hold' and now >= room['deadline']:
+                progress_hand(room, engine.state_for(room['hand']), now)
             elif room['phase'] == 'runout':
                 room['deadline'] = now + 15
             elif room['phase'] == 'straddle':
@@ -672,7 +703,9 @@ def tick(room, now):
             room['phase'] = room.get('resume_phase') or 'waiting'
     if room['recovery']:
         return
-    if room['phase'] == 'dealing' and now >= room['deadline']:
+    if room['phase'] == 'action_hold' and now >= room['deadline']:
+        progress_hand(room, engine.state_for(room['hand']), now)
+    elif room['phase'] == 'dealing' and now >= room['deadline']:
         complete_deal(room, now)
     elif room['phase'] == 'betting':
         hand = room['hand']
@@ -681,10 +714,10 @@ def tick(room, now):
             state = engine.state_for(hand)
             pid = hand['clock']['pid']
             check = state.checking_or_calling_amount == 0
-            engine.step(hand, state, 'check_or_call' if check else 'fold')
+            display = betting_step(hand, state, 'check_or_call' if check else 'fold')
             hand['last_actions'][pid] = '过牌' if check else '弃牌'
             log(room, f"{room['players'][pid]['name']} 超时{'过牌' if check else '弃牌'}", now)
-            progress_hand(room, state, now)
+            progress_action(room, state, display, now)
     elif room['phase'] == 'runout' and now >= room['deadline']:
         resolve_runout(room, now)
     elif room['phase'] == 'straddle':
@@ -798,6 +831,8 @@ def view(room, viewer, now):
         if state and p['id'] in hand['ids']:
             idx = hand['ids'].index(p['id'])
             visible.update(stack=state.stacks[idx], bet=state.bets[idx], folded=not state.statuses[idx])
+            if display := hand.get('action_display'):
+                visible.update(stack=display['stacks'][idx], bet=display['bets'][idx])
         if hand:
             visible['cards'] = visible_cards(hand, p['id'], viewer)
             if hand['result'] is not None:
@@ -821,7 +856,8 @@ def view(room, viewer, now):
         requests=[r for r in room['requests'] if viewer == room['owner'] or r['pid'] == viewer],
         logs=room['logs'][-500:], ledger=room['ledger'], history=[public_hand(h, viewer) for h in room['history'][-100:]],
         rebuy=rebuy_pending(room), straddle=room['straddle_offer']['pid'] if room['straddle_offer'] else None,
-        pot=state.total_pot_amount if state else 0, pots=list(state.pot_amounts) if state else [],
+        pot=hand.get('action_display', {}).get('pot', state.total_pot_amount) if state else 0,
+        pots=list(state.pot_amounts) if state else [],
         legal=engine.legal(state) if room['phase'] == 'betting' and state and state.actor_index is not None and hand['ids'][state.actor_index] == viewer else None)
     if viewer in room['players']:
         result['recovery_code'] = room['players'][viewer]['code']

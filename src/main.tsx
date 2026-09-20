@@ -97,6 +97,7 @@ const phases: Record<string, string> = {
   waiting: "等待开局",
   straddle: "UTG 选择中",
   betting: "牌局进行中",
+  action_hold: "本轮行动结束",
   dealing: "正在发公共牌",
   runout: "选择发牌次数",
   between: "本手已结算",
@@ -781,7 +782,7 @@ function PokerTable({
         const inHand = p && playing && hand.ids.includes(p.id);
         const allIn = p && inHand && !p.folded && p.stack === 0;
         const tableAction = p && inHand && !actor ? hand.last_actions[p.id] : undefined;
-        const betAmount = p && inHand && tableAction !== '弃牌' ? p.bet : 0;
+        const betAmount = p && inHand && tableAction !== '弃牌' && tableAction !== '过牌' ? p.bet : 0;
         const cards = inHand || (p && hand?.ids.includes(p.id)) ? p?.cards : [];
         const folded = !!(p?.folded && hand?.ids.includes(p.id));
         const displayedCards = cards?.length ? cards : folded ? [null, null] : [];
@@ -1154,7 +1155,7 @@ function RoomScreen({
   const legal = room.legal || { call: 0, fold: false, can_raise: false,
     min_raise: room.settings.bb * 2, max_raise: Math.max(room.settings.bb * 2, me.stack + me.bet) };
   const canRaise = !!mayAct && legal.can_raise && !busy;
-  const bettingStage = !!active && me.seat !== null && ["betting", "dealing"].includes(room.phase);
+  const bettingStage = !!active && me.seat !== null && ["betting", "action_hold", "dealing"].includes(room.phase);
   const pendingApprovals = room.requests.filter(request => !request.approved).length;
   const awaiting = room.requests.find((r) => r.pid === room.me);
   const countdown = Math.max(0, Math.ceil((room.deadline || 0) - now));

@@ -151,6 +151,9 @@ def test_ordinary_actions_and_showdown_have_no_odds(monkeypatch):
     assert game.view(room, observer, 1001)['hand']['runout_equity'] is None
     raw_call(room, 1001)
     raw_call(room, 1001)
+    assert room['phase'] == 'action_hold'
+    assert game.view(room, observer, 1001)['hand']['runout_equity'] is None
+    game.tick(room, room['deadline'])
     assert room['phase'] == 'dealing'
     assert game.view(room, observer, 1001)['hand']['runout_equity'] is None
 

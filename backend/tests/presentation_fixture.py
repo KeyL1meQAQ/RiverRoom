@@ -18,9 +18,11 @@ def snapshots():
         result['preflop'] = game.view(room, room['owner'], 1001)
         raw_call(room, 1001)
         raw_call(room, 1001)
-        result['flop'] = game.view(room, room['owner'], 1001)
+        result['last_check'] = copy.deepcopy(game.view(room, room['owner'], 1001))
+        game.tick(room, room['deadline'])
+        result['flop'] = game.view(room, room['owner'], 1002.5)
         settle_dealing(room)
-        result['flop_done'] = game.view(room, room['owner'], 1001.75)
+        result['flop_done'] = game.view(room, room['owner'], 1003.25)
 
     with pytest.MonkeyPatch.context() as patch:
         holes = [('2c', '3d'), ('4c', '5d'), ('6c', '7d'), ('8c', '9d'), ('Tc', 'Jd'),

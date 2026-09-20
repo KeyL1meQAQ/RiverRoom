@@ -175,10 +175,11 @@ def test_deadline_hand_number_and_membership_are_checked(monkeypatch):
         show(room, observer, [0])
     with pytest.raises(game.GameError, match='时间已结束'):
         show(room, ids[0], [0], now=room['hand']['reveal_until'])
-    game.tick(room, 1010)
+    expired = room['hand']['reveal_until'] + 1
+    game.tick(room, expired)
     assert room['number'] == 1
     with pytest.raises(game.GameError, match='时间已结束'):
-        show(room, ids[0], [0], now=1010)
+        show(room, ids[0], [0], now=expired)
 
 
 def test_allin_with_sidepots_reveals_every_contender(monkeypatch):
@@ -261,11 +262,12 @@ def test_partial_reveal_survives_restart_without_extending_deadline(monkeypatch,
     store = Store(f'sqlite:///{tmp_path}/restart.db')
     store.save(room)
     restored = Service(store).rooms[room['id']]
-    game.command(restored, restored['owner'], {'type': 'resume'}, 1010)
+    expired = room['hand']['reveal_until'] + 1
+    game.command(restored, restored['owner'], {'type': 'resume'}, expired)
     assert restored['hand']['reveal_until'] == room['hand']['reveal_until']
     with pytest.raises(game.GameError, match='时间已结束'):
-        show(restored, ids[0], [1], now=1010)
-    public = game.view(restored, observer, 1010)
+        show(restored, ids[0], [1], now=expired)
+    public = game.view(restored, observer, expired)
     assert public['hand']['cards'][ids[0]] == [room['hand']['dealt'][ids[0]][0], None]
     assert public['history'][0]['cards'][ids[0]] == public['hand']['cards'][ids[0]]
 

@@ -151,6 +151,8 @@ def test_zero_pot_from_normal_blind_rotation_counts_win_once_and_closes(departur
     # The remaining actor times out normally; all callbacks are transactional.
     until = restored['hand']['clock']['until']
     asyncio.run(service.mutate(room['id'], lambda r: game.tick(r, until)))
+    assert service.rooms[room['id']]['phase'] == 'action_hold'
+    asyncio.run(service.mutate(room['id'], lambda r: game.tick(r, r['deadline'])))
     finished = service.rooms[room['id']]
     assert finished['hand']['awards'] == []
     assert finished['hand']['uncontested_winner'] == winner

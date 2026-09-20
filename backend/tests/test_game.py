@@ -20,7 +20,7 @@ def table(stacks=(100, 100, 100), **config):
 
 def settle_dealing(room):
     for _ in range(10):
-        if room['phase'] != 'dealing':
+        if room['phase'] not in {'dealing', 'action_hold'}:
             return
         game.tick(room, room['deadline'])
     pytest.fail('dealing did not complete')

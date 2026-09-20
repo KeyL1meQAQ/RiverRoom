@@ -59,6 +59,24 @@ test('settled results survive the reveal deadline, reload, and the next straddle
   await expect(page.locator('.winning-seat')).toHaveCount(0);
 });
 
+test('reloading during the last-action hold retains the check and only waits the remaining server time', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const snapshot = structuredClone(fixtures.last_check);
+  snapshot.server_time += 1;
+  const checker = snapshot.players.find(p => snapshot.hand!.last_actions[p.id] === '过牌')!;
+  const push = await mount(page, snapshot);
+  await expect(page.getByLabel(`${checker.name} 过牌`, { exact: true })).toHaveText('过牌');
+  await expect(page.locator('.seat.acting')).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByLabel(`${checker.name} 过牌`, { exact: true })).toBeVisible();
+  await expect(page.locator('.boards .playing-card:not(.placeholder)')).toHaveCount(0);
+  push('flop');
+  await expect(page.getByLabel(`${checker.name} 过牌`, { exact: true })).toHaveCount(0);
+  await expect(page.locator('.boards .playing-card:not(.placeholder)')).toHaveCount(3);
+  push('flop_done');
+  await expect(page.locator('.seat.acting')).toHaveCount(1);
+});
+
 test('expired result seats use current occupants and never give a newcomer old cards or winnings', async ({ page }) => {
   const state = structuredClone(fixtures.twice);
   state.hand!.reveal_until = state.server_time - 1;

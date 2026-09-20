@@ -53,6 +53,9 @@ def test_table_actions_use_street_totals_and_clear_before_the_next_street(monkey
     assert next(p for p in visible['players'] if p['id'] == caller)['bet'] == 2
     assert any('跟注 1' in item['text'] for item in visible['logs'])
     raw_call(room, 1001)
+    assert room['phase'] == 'action_hold'
+    assert game.view(room, observer, 1001)['hand']['last_actions']
+    game.tick(room, room['deadline'])
     assert room['phase'] == 'dealing'
     assert game.view(room, observer, 1001)['hand']['last_actions'] == {}
     settle_dealing(room)
@@ -120,22 +123,24 @@ def test_flop_blocks_action_and_clock_until_all_three_cards_finish(monkeypatch):
     raw_call(room, 1001)
     raw_call(room, 1001)
     hand = room['hand']
+    assert room['phase'] == 'action_hold'
+    game.tick(room, 1002.5)
     assert room['phase'] == 'dealing'
     assert hand['deal']['previous'] == [0]
-    assert room['deadline'] == 1001.75
+    assert room['deadline'] == 1003.25
     assert hand['clock'] is None and hand['result'] is None
     bank = {pid: room['players'][pid]['bank'] for pid in ids}
     for pid in [*ids, observer]:
-        state = game.view(room, pid, 1001.5)
+        state = game.view(room, pid, 1003)
         assert state['legal'] is None
         assert not any('公共牌 ' in item['text'] for item in state['logs'])
     with pytest.raises(game.GameError, match='当前不能'):
-        game.command(room, ids[0], dict(type='act', hand=1, seq=hand['action_seq'], action='call'), 1001.5)
-    game.tick(room, 1001.749)
+        game.command(room, ids[0], dict(type='act', hand=1, seq=hand['action_seq'], action='call'), 1003)
+    game.tick(room, 1003.249)
     assert room['phase'] == 'dealing'
-    game.tick(room, 1001.75)
+    game.tick(room, 1003.25)
     assert room['phase'] == 'betting'
-    assert hand['clock']['base_until'] == 1021.75
+    assert hand['clock']['base_until'] == 1023.25
     assert {pid: room['players'][pid]['bank'] for pid in ids} == bank
 
 
@@ -143,6 +148,8 @@ def test_allin_deals_streets_before_result_and_preserves_window(monkeypatch):
     room, ids, _ = fixed_table(monkeypatch, [('Ac', 'Ad'), ('Kc', 'Kd')])
     action(room, 'raise', 100)
     raw_call(room, 1001)
+    assert room['phase'] == 'action_hold'
+    game.tick(room, room['deadline'])
     stages = []
     while room['phase'] == 'dealing':
         hand = room['hand']
@@ -169,6 +176,9 @@ def test_runout_street_reading_pause_survives_storage(monkeypatch, tmp_path, twi
     if twice:
         for pid in ids:
             game.command(room, pid, dict(type='vote', value=True), room['deadline'] - 1)
+    else:
+        assert room['phase'] == 'action_hold'
+        game.tick(room, room['deadline'])
     store = Store(f'sqlite:///{tmp_path}/reading.db')
     store.save(room)
     stages = []
@@ -340,6 +350,7 @@ def test_deal_restart_keeps_cards_and_resumes_with_full_action_time(monkeypatch,
     room, ids, _ = fixed_table(monkeypatch, [('Ac', 'Ad'), ('Kc', 'Kd')])
     raw_call(room, 1001)
     raw_call(room, 1001)
+    game.tick(room, room['deadline'])
     before = copy.deepcopy(room['hand'])
     store = Store(f'sqlite:///{tmp_path}/presentation.db')
     store.save(room)

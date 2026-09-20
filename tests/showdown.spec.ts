@@ -136,8 +136,8 @@ test("normal showdown broadcasts the complete ordered prefix together", async ({
     await command(0, { type: "pause" });
     let current = await state();
     while (current.hand!.result === null) {
-      if (current.phase === "dealing") {
-        await expect.poll(async () => (await state()).phase).not.toBe("dealing");
+      if (["dealing", "action_hold"].includes(current.phase)) {
+        await expect.poll(async () => ["dealing", "action_hold"].includes((await state()).phase)).toBe(false);
         current = await state();
         continue;
       }
@@ -160,6 +160,59 @@ test("normal showdown broadcasts the complete ordered prefix together", async ({
     expect(await observer.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
     expect(errors).toEqual([]);
     await command(0, { type: "end" });
+  } finally {
+    for (const context of contexts) await context.close();
+  }
+});
+
+test('last actions stay visible to mobile players and desktop observers before each street and showdown', async ({ browser, baseURL }) => {
+  const { contexts, pages, state, command } = await roomWithPlayers(browser, baseURL!, 2);
+  try {
+    await command(0, { type: 'start' });
+    await command(0, { type: 'pause' });
+    const timings: number[] = [];
+    for (const prefix of [0, 3, 4, 5]) {
+      let current = await state();
+      const first = current.players.find(p => p.id === current.hand!.clock!.pid)!;
+      await command(first.seat!, { type: 'act', action: prefix === 3 ? 'raise' : 'call', amount: 20,
+        hand: current.number, seq: current.hand!.seq });
+      current = await state();
+      const last = current.players.find(p => p.id === current.hand!.clock!.pid)!;
+      await command(last.seat!, { type: 'act', action: 'call', hand: current.number, seq: current.hand!.seq });
+      const held = await state();
+      expect(held.phase).toBe('action_hold');
+      const actionAt = held.deadline! - 1.5;
+      const label = `${last.name} ${prefix === 3 ? '跟注 20' : '过牌'}`;
+      for (const page of [pages[0], pages[2]]) {
+        await expect(page.getByLabel(label, { exact: true })).toBeVisible();
+        await expect(page.locator('.boards .playing-card:not(.placeholder)')).toHaveCount(prefix);
+        await expect(page.locator('.seat.acting, .turn-track')).toHaveCount(0);
+      }
+      if (prefix === 0 || prefix === 3) {
+        await pages[0].screenshot({ path: `artifacts/last-action-${prefix}-390.png`, fullPage: true });
+        await pages[2].screenshot({ path: `artifacts/last-action-${prefix}-1440.png`, fullPage: true });
+      }
+      const remaining = (actionAt + 1.15) * 1000 - Date.now();
+      if (remaining > 0) await pages[0].waitForTimeout(remaining);
+      await expect(pages[0].getByLabel(label, { exact: true })).toBeVisible();
+      await expect(pages[2].locator('.boards .playing-card:not(.placeholder)')).toHaveCount(prefix);
+      await expect.poll(async () => (await state()).phase, { intervals: [40], timeout: 4000 }).not.toBe('action_hold');
+      current = await state();
+      const advancedAt = prefix === 5 ? current.hand!.presentation!.start : current.hand!.deal!.start;
+      const elapsed = (advancedAt - actionAt) * 1000;
+      timings.push(elapsed);
+      expect(elapsed).toBeGreaterThanOrEqual(1500);
+      expect(elapsed).toBeLessThan(1750);
+      await expect(pages[0].getByLabel(label, { exact: true })).toHaveCount(0);
+      if (prefix < 5) {
+        await expect.poll(async () => (await state()).phase).toBe('betting');
+      }
+    }
+    console.log('Last-action hold durations (ms), preflop/flop/turn/river:', timings);
+    for (const page of [pages[0], pages[2]]) {
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+    await command(0, { type: 'end' });
   } finally {
     for (const context of contexts) await context.close();
   }
