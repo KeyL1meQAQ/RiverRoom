@@ -44,6 +44,8 @@ def timeline(hand, captured, now):
                 cursor += .18
     squid_at = cursor
     if squid:
+        if squid.get('status') == 'settled':
+            cursor += 3
         for payment in sorted(squid['payments'], key=lambda p: order(p['pid'])):
             for transfer in sorted(payment['transfers'], key=lambda t: order(t['pid'])):
                 if transfer['amount']:

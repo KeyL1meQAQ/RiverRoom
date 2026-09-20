@@ -89,7 +89,9 @@ test('held funds and return without duplicate buyin are clear on mobile', async 
 test('round payout includes departed players, and notification never replays on refresh or reconnect', async ({ page }) => {
   const { push, reconnect } = await mount(page, fixtures.last_before);
   push(fixtures.settled);
-  await expect(page.locator('.squid-notice')).toContainText('第 1 轮已结算');
+  await expect(page.locator('.squid-celebration')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('.squid-payment')).toContainText('支付 20');
+  await expect(page.locator('.squid-notice')).toContainText('第 1 轮已结算', { timeout: 10000 });
   await page.locator('.squid-tag').click();
   await expect(page.locator('.squid-settlement')).toContainText(fixtures.settled.players.find(p => p.id === fixtures.settled.me)!.name);
   await expect(page.locator('.squid-settlement')).toContainText('实付 20 / 应付 20');
@@ -130,7 +132,8 @@ test('real two-browser hand awards a squid and settles without an extra buyin', 
     await a.getByRole('button', { name: '开始游戏', exact: true }).click();
     await expect(a.locator('.achievement-badge.squid')).toHaveCount(2);
     await a.getByRole('button', { name: '弃牌', exact: true }).click();
-    await expect(b.locator('.squid-notice')).toContainText('第 1 轮已结算');
+    await expect(b.locator('.squid-celebration')).toBeVisible({ timeout: 10000 });
+    await expect(b.locator('.squid-notice')).toContainText('第 1 轮已结算', { timeout: 10000 });
     const rid = a.url().split('/r/')[1];
     const state = await (await a.request.get(`/api/rooms/${rid}`)).json() as Room;
     expect(state.squid_history![0].payments[0].amount).toBe(10);

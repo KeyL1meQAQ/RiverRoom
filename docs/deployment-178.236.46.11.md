@@ -39,6 +39,38 @@ no process listens on it and it is not published.
 Official Cloudflare ranges for future refreshes:
 https://www.cloudflare.com/ips-v4/ and https://www.cloudflare.com/ips-v6/.
 
+## Release 20260919T094814Z
+
+- Deploys the squid round badge before penalty flights with a server-timed
+  three-second interval, black/gold styling, gold reward text and coral payment
+  text. Zero-squid players display actual payment amounts.
+- Source revision `72757f2dc9532bb08c8de1448cc8faf9c98fa60a` plus requested
+  uncommitted changes; isolated snapshot and production build. No commit/push.
+- Snapshot backend suite: 185 passed after compiling its native odds library;
+  frontend build passed. Public acceptance: eight tests passed initially, then
+  the real two-browser squid test passed after updating its old five-second
+  notification timeout to account for the badge interval (nine passing cases).
+  Both notification tests now assert the badge appears before the final notice.
+- Verified public HTTPS health, exact HTML/JS/CSS bytes, WSS, identity reload,
+  Secure/HttpOnly cookies, real multiplayer and squid gameplay. Fixture-driven
+  badge captures at 1440px/390px were inspected; these use synthetic round data
+  against the deployed frontend. Six run-created rooms were verified closed.
+- Evidence: `artifacts/deploy-20260919T094814Z/`. Archive SHA-256:
+  `b357863c3bbea82aa0a3ba5a5d8068297dff4e7ca1b9f19bf1ca95e97d6ecb9f`.
+  The unused root Dockerfile was corrected after an archive path collision;
+  production uses the separately verified `deploy/Dockerfile`. The final test
+  timeout adjustment and documentation were synced separately with the manifest.
+  Application sources did not drift after build.
+- Backup: `/opt/poker/shared/backups/poker-20260919T094814Z.dump`, 217813 bytes,
+  mode 600, validated by pg_restore. Previous symlink target:
+  `/opt/poker/releases/20260919T074127Z`; actual running image saved as
+  `river-room-app:rollback-20260919T094814Z`, image ID
+  `sha256:cb59d0ea3ac58bdee4f21d9233e43b74851ff70de022d3968aa0048c4d207f52`.
+- Before replacement: 16 open rooms, three started, zero online players.
+  New app healthy, one Uvicorn process on host 8080, no published ports/DNAT;
+  read-only database socket retained. DB/Y2P container identities/start times,
+  FRP PID, Nginx/UFW hashes and unrelated listeners match the baseline.
+
 ## Release 20260919T074127Z
 
 - Deploys the approved runout unique-win probabilities, including exclusion of

@@ -64,3 +64,21 @@ export function SquidNotice({ hand, connection, now }: { hand: Hand | null; conn
     {event.settlement && <span>第 {event.award.round} 轮已结算 · 点击鱿鱼状态查看收付</span>}
   </div>;
 }
+
+export function SquidCelebration({ hand, connection, now }: { hand: Hand | null; connection: number; now: number }) {
+  const settlement = hand?.squid?.settlement;
+  const paidBy = new Map((settlement?.payments || []).map(payment => [payment.pid, payment.amount]));
+  const at = hand?.presentation?.squid_at ?? settlement?.finished_at ?? 0;
+  const baseline = useRef({ connection, event: settlement?.id, until: 0 });
+  if (baseline.current.connection !== connection) baseline.current = { connection, event: settlement?.id, until: 0 };
+  else if (baseline.current.event !== settlement?.id) baseline.current = { connection, event: settlement?.id, until: settlement ? at + 3 : 0 };
+  if (!settlement || settlement.status !== 'settled' || !hand?.result || now < at || now >= baseline.current.until || document.visibilityState !== 'visible') return null;
+  return <div className="squid-celebration" role="status" aria-live="polite" aria-label={`第${settlement.number}轮鱿鱼结算`}>
+    <div className="squid-celebration-mark" aria-hidden="true">🦑</div>
+    <strong>第 {settlement.number} 轮鱿鱼结算</strong>
+    <span className="squid-celebration-sub">每只鱿鱼 {n(settlement.amount)} · 共 {settlement.total} 只</span>
+    <div className="squid-reward-list">{settlement.results.map(result => <div className="squid-reward-row" key={result.pid}>
+      <span>{result.name}</span><b>🦑 {result.count}</b><em className={result.count ? 'squid-reward' : 'squid-payment'}>{result.count ? `奖金 ${n(result.count * settlement.amount)}` : `支付 ${n(paidBy.get(result.pid) || 0)}`}</em>
+    </div>)}</div>
+  </div>;
+}

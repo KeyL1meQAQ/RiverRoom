@@ -38,7 +38,7 @@ import { RunoutEquity } from "./RunoutEquity";
 import { FlipNumber, SettlementLayer, settlementBalances, useMotionBaseline } from "./settlement";
 import { AchievementBadges, AchievementDetails } from "./Achievements";
 import { BountyCelebration, BountyRules } from "./Bounty";
-import { SquidRules, SquidDetails, SquidNotice, SquidSettlementView } from "./Squid";
+import { SquidRules, SquidDetails, SquidNotice, SquidCelebration, SquidSettlementView } from "./Squid";
 import "./styles.css";
 
 const defaults: Config = {
@@ -1296,6 +1296,7 @@ function RoomScreen({
       </div>}
       <SquidNotice hand={hand} connection={connection} now={now} />
       <BountyCelebration hand={hand} connection={connection} now={now} />
+      <SquidCelebration hand={hand} connection={connection} now={now} />
       {status === "revoked" && (
         <div className="connection-banner">
           身份已在另一设备召回。
