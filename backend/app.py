@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import achievements, game
+from . import achievements, game, interactions
 from .store import Store
 
 logger = logging.getLogger('river')
@@ -38,6 +38,8 @@ class Service:
         self.locks = defaultdict(asyncio.Lock)
         self.connections = defaultdict(dict)
         self.limits = defaultdict(deque)
+        self.interaction_times = {}
+        self.socket_send_locks = defaultdict(asyncio.Lock)
         now = time.time()
         for room in self.rooms.values():
             old = room['version']
@@ -47,6 +49,7 @@ class Service:
             migrated = game.squid.migrate(room) or migrated
             migrated = achievements.migrate(room) or migrated
             migrated = achievements.retry_pending(room) or migrated
+            migrated = game.migrate_kicked_players(room) or migrated
             if room['closed_at']:
                 if migrated:
                     room['version'] += 1
@@ -109,15 +112,51 @@ class Service:
         for ws, (pid, browser) in list(self.connections[rid].items()):
             try:
                 if room['players'][pid]['browser'] != browser:
-                    await asyncio.wait_for(ws.send_json({'type': 'revoked'}), 2)
+                    async with self.socket_send_locks[ws]:
+                        await asyncio.wait_for(ws.send_json({'type': 'revoked'}), 2)
                     await ws.close(code=1008)
                     self.connections[rid].pop(ws, None)
+                    self.socket_send_locks.pop(ws, None)
                     continue
                 if pid not in cache:
                     cache[pid] = game.view(room, pid, time.time())
-                await asyncio.wait_for(ws.send_json({'type': 'state', 'state': cache[pid]}), 2)
+                async with self.socket_send_locks[ws]:
+                    await asyncio.wait_for(ws.send_json({'type': 'state', 'state': cache[pid]}), 2)
             except Exception:
                 self.connections[rid].pop(ws, None)
+                self.socket_send_locks.pop(ws, None)
+
+    async def interact(self, rid, sid, data):
+        async with self.locks[rid]:
+            room = self.room(rid)
+            pid = self.player(room, sid)['id']
+            event, channel = interactions.make_event(room, pid, data, time.time())
+            now = time.monotonic()
+            key = (rid, pid, channel)
+            interval = 10 if channel == 'burst' else 1
+            if now - self.interaction_times.get(key, float('-inf')) < interval:
+                raise HTTPException(429, '互动过于频繁，请稍后再试')
+            if channel == 'single' and now < self.interaction_times.get((rid, pid, 'burst'), 0) + 5:
+                raise HTTPException(429, '十连投掷尚未结束')
+            self.interaction_times[key] = now
+        await self.publish_interaction(rid, event)
+        return {'ok': True, 'event_id': event['id'], 'at': event['at']}
+
+    async def publish_interaction(self, rid, event):
+        room = self.rooms.get(rid)
+        if not room:
+            return
+        async def send_one(ws, pid, browser):
+            if room['players'][pid]['browser'] != browser:
+                return
+            try:
+                async with self.socket_send_locks[ws]:
+                    await asyncio.wait_for(ws.send_json({'type': 'interaction', 'event': event}), 2)
+            except Exception:
+                self.connections[rid].pop(ws, None)
+                self.socket_send_locks.pop(ws, None)
+        await asyncio.gather(*(send_one(ws, pid, browser)
+            for ws, (pid, browser) in list(self.connections[rid].items())))
 
     async def loop(self):
         while True:
@@ -131,6 +170,8 @@ class Service:
                 if room['closed_at'] and now - room['closed_at'] >= 30 * 86400:
                     self.store.remove(rid)
                     self.rooms.pop(rid, None)
+                    for key in [key for key in self.interaction_times if key[0] == rid]:
+                        del self.interaction_times[key]
                     continue
                 if room['closed_at']:
                     continue
@@ -258,6 +299,12 @@ def create_app(store=None):
             return {'ok': True}
         return await service.mutate(rid, execute)
 
+    @app.post('/api/rooms/{rid}/interactions')
+    async def interact(rid: str, request: Request):
+        service = request.app.state.service
+        service.limit(('interaction', request.client.host), 2400)
+        return await service.interact(rid, request.cookies.get('river_browser', ''), await request.json())
+
     @app.get('/api/rooms/{rid}/stats.csv')
     async def stats(rid: str, request: Request):
         room = request.app.state.service.room(rid)
@@ -327,6 +374,7 @@ def create_app(store=None):
             pass
         finally:
             service.connections[rid].pop(ws, None)
+            service.socket_send_locks.pop(ws, None)
             if rid in service.rooms:
                 def disconnected(room):
                     p = room['players'][pid]

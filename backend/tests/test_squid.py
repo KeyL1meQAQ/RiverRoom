@@ -384,10 +384,10 @@ def test_zero_balance_former_player_is_not_busted_again_and_kick_keeps_liability
     game.command(room, room['owner'], dict(type='kick', pid=target), 1001)
     finish(room)
     p = room['players'][target]
-    assert p['stack'] == 0 and p['seat'] is None and p['squid_held'] and p['banned']
+    assert p['stack'] == 0 and p['seat'] is None and p['squid_held'] and not p['banned']
     assert p['achievements']['busts'] == 1
-    with pytest.raises(game.GameError):
-        game.command(room, target, dict(type='request_seat', seat=1, name=p['name'], amount=100), 1002)
+    game.command(room, target, dict(type='request_seat', seat=3, name=p['name'], amount=100), 1002)
+    game.command(room, target, dict(type='cancel_request', request=room['requests'][-1]['id']), 1002)
     next_hand(room)
     fold_hand(room)
     assert p['achievements']['busts'] == 1

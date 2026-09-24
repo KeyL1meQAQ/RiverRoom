@@ -12,6 +12,7 @@ import {
   Copy,
   Crown,
   Eye,
+  EyeOff,
   History,
   Info,
   KeyRound,
@@ -24,6 +25,7 @@ import {
   RotateCcw,
   Settings,
   ShieldCheck,
+  SmilePlus,
   Spade,
   Users,
   Volume2,
@@ -40,6 +42,8 @@ import { AchievementBadges, AchievementDetails } from "./Achievements";
 import { BountyCelebration, BountyRules } from "./Bounty";
 import { ShortDeckRules } from "./ShortDeck";
 import { SquidRules, SquidDetails, SquidNotice, SquidCelebration, SquidSettlementView } from "./Squid";
+import { BubblePicker, InteractionLayer, ThrowPicker } from "./Interactions";
+import type { InteractionEvent } from "./Interactions";
 import "./styles.css";
 
 const defaults: Config = {
@@ -647,6 +651,7 @@ function PokerTable({
   revealing,
   connection,
   sound,
+  interactions,
 }: {
   room: Room;
   now: number;
@@ -656,6 +661,7 @@ function PokerTable({
   revealing: boolean;
   connection: number;
   sound: boolean;
+  interactions: InteractionEvent[];
 }) {
   const me = room.players.find((p) => p.id === room.me)!;
   const hand = room.hand;
@@ -953,6 +959,8 @@ function PokerTable({
         );
       })}
       <SettlementLayer room={room} now={now} root={stageRef} baseline={motion.at} motionKey={motion.key} />
+      <InteractionLayer room={room} ownSeat={ownSeat} events={interactions}
+        desktop={desktopPositions} mobile={mobilePositions} />
     </div>
   );
 }
@@ -974,6 +982,16 @@ function RoomScreen({
   const [epoch, setEpoch] = useState(0);
   const [connection, setConnection] = useState(0);
   const sound = useSoundPreference();
+  const [interactionEvents, setInteractionEvents] = useState<InteractionEvent[]>([]);
+  const interactionTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  const [hideInteractions, setHideInteractions] = useState(() => {
+    try { return localStorage.getItem("river_hide_interactions") === "true"; } catch { return false; }
+  });
+  const hideInteractionsRef = useRef(hideInteractions);
+  const [bubbleOpen, setBubbleOpen] = useState(false);
+  const [interactionPending, setInteractionPending] = useState(false);
+  const interactionPendingRef = useRef(false);
+  const [interactionSent, setInteractionSent] = useState({ bubble: 0, single: 0, burst: 0 });
   const [now, setNow] = useState(Date.now() / 1000);
   const offset = useRef(0);
   const [modal, setModal] = useState<string | null>(null);
@@ -1018,6 +1036,7 @@ function RoomScreen({
     };
     const connect = () => {
       if (cancelled) return;
+      setInteractionEvents([]);
       let receivedState = false;
       ws = new WebSocket(
         `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws/${rid}`,
@@ -1037,6 +1056,16 @@ function RoomScreen({
             setConnection(value => value + 1);
           }
           accept(message.state);
+        }
+        if (message.type === "interaction" && !hideInteractionsRef.current) {
+          const event = message.event as InteractionEvent;
+          setInteractionEvents(current => [...current.filter(item =>
+            event.kind !== "bubble" || item.kind !== "bubble" || item.from !== event.from), event].slice(-100));
+          const timer = setTimeout(() => {
+            interactionTimers.current.delete(timer);
+            setInteractionEvents(current => current.filter(item => item.id !== event.id));
+          }, event.kind === "bubble" ? 3000 : event.count === 10 ? 5000 : 1100);
+          interactionTimers.current.add(timer);
         }
         if (message.type === "revoked") {
           revoked = true;
@@ -1068,6 +1097,8 @@ function RoomScreen({
       cancelled = true;
       clearTimeout(timer);
       clearInterval(ping);
+      interactionTimers.current.forEach(clearTimeout);
+      interactionTimers.current.clear();
       ws?.close();
     };
   }, [rid, epoch]);
@@ -1096,6 +1127,29 @@ function RoomScreen({
       return false;
     } finally {
       setBusy(false);
+    }
+  };
+  const toggleInteractions = () => {
+    const next = !hideInteractions;
+    hideInteractionsRef.current = next;
+    if (next) setInteractionEvents([]);
+    try { localStorage.setItem("river_hide_interactions", String(next)); } catch { /* Session preference still works. */ }
+    setHideInteractions(next);
+  };
+  const sendInteraction = async (body: object, channel: "bubble" | "single" | "burst") => {
+    if (status !== "connected" || interactionPendingRef.current) return;
+    interactionPendingRef.current = true;
+    setInteractionPending(true);
+    try {
+      const result = await api(`/api/rooms/${rid}/interactions`, body);
+      setInteractionSent(value => ({ ...value, [channel]: result.at }));
+      if (channel === "bubble") setBubbleOpen(false);
+      else setModal(null);
+    } catch (e) {
+      error((e as Error).message);
+    } finally {
+      interactionPendingRef.current = false;
+      setInteractionPending(false);
     }
   };
   const recall = async (e: React.FormEvent) => {
@@ -1157,6 +1211,12 @@ function RoomScreen({
   const canRaise = !!mayAct && legal.can_raise && !busy;
   const bettingStage = !!active && me.seat !== null && ["betting", "action_hold", "dealing"].includes(room.phase);
   const pendingApprovals = room.requests.filter(request => !request.approved).length;
+  const interactionNow = now;
+  const interactionUnavailable = status !== "connected" || !!room.closed_at || me.seat === null || interactionPending;
+  const bubbleDisabled = interactionUnavailable || interactionNow - interactionSent.bubble < 1;
+  const singleDisabled = interactionUnavailable || interactionNow - interactionSent.single < 1 ||
+    interactionNow - interactionSent.burst < 5;
+  const burstDisabled = interactionUnavailable || interactionNow - interactionSent.burst < 10;
   const awaiting = room.requests.find((r) => r.pid === room.me);
   const countdown = Math.max(0, Math.ceil((room.deadline || 0) - now));
   const openSeat = (s: number) => {
@@ -1346,6 +1406,9 @@ function RoomScreen({
             </span>
             <ResultScrollHint room={room} now={now} />
             <span className="toolbar-spacer" />
+            <IconButton title={hideInteractions ? "显示互动" : "隐藏互动"} onClick={toggleInteractions}>
+              {hideInteractions ? <EyeOff size={16} /> : <Eye size={16} />}
+            </IconButton>
             {owner && (
               <>
                 <IconButton
@@ -1383,6 +1446,7 @@ function RoomScreen({
           <PokerTable
             connection={connection}
             sound={!sound.muted && status === "connected"}
+            interactions={hideInteractions ? [] : interactionEvents}
             room={room}
             now={now}
             sit={openSeat}
@@ -1713,6 +1777,13 @@ function RoomScreen({
         </aside>
       </main>
       <footer className="action-bar">
+        {me.seat !== null && !room.closed_at && <IconButton title="发送气泡"
+          className={`interaction-trigger ${bubbleOpen ? "active" : ""}`}
+          disabled={status !== "connected"}
+          onClick={() => setBubbleOpen(value => !value)}><SmilePlus size={18} /></IconButton>}
+        {bubbleOpen && me.seat !== null && !room.closed_at &&
+          <BubblePicker close={() => setBubbleOpen(false)} disabled={bubbleDisabled}
+            send={preset => void sendInteraction({ type: "bubble", preset }, "bubble")} />}
         <div className="my-status">
           <div className="my-avatar">
             {me.seat === null ? <Eye size={20} /> : me.name.slice(0, 1)}
@@ -2226,6 +2297,10 @@ function RoomScreen({
             </span>
           </div>
           <AchievementDetails player={target} since={room.achievement_since} pending={room.achievement_pending} />
+          {me.seat !== null && target.seat !== null && target.id !== me.id && !room.closed_at &&
+            <ThrowPicker target={target} singleDisabled={singleDisabled} burstDisabled={burstDisabled}
+              send={(item, count) => void sendInteraction({ type: "throw", item, target: target.id, count },
+                count === 10 ? "burst" : "single")} />}
           {target.id === me.id && me.seat !== null && <div className="modal-actions personal-actions">
             <button className="secondary" disabled={busy || !!room.closed_at || (me.away && me.stack === 0)}
               onClick={() => send({ type: "away", value: !me.away }, true)}>
@@ -2307,7 +2382,7 @@ function RoomScreen({
                   ? "本手结束后将全额买出并释放座位。"
                   : `全额买出 ${n(me.stack)} 筹码并释放座位。`,
                 end: "当前手牌结束后，所有玩家全额买出，房间关闭。未完成的鱿鱼轮次作废；本手恰好完成整轮则正常结算。",
-                kick: target?.squid_count != null ? "本手结束后移除玩家，但保留本轮鱿鱼责任和暂留筹码，轮末收付后再买出。该身份无法再次入座。" : "本手结束后全额结算并移除该玩家，该身份将无法再次入座。",
+                kick: target?.squid_count != null ? "本手结束后移除玩家，但保留本轮鱿鱼责任和暂留筹码，轮末收付后再买出。之后可重新申请入座。" : "本手结束后全额结算并移除该玩家，之后可重新申请入座。",
                 reverse: "撤销这笔尚未使用的全额买入，并将玩家离座。",
                 "transfer-confirm": `将房主权限转交给 ${target?.name}。`,
               }[modal!]

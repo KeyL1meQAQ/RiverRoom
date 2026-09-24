@@ -92,6 +92,15 @@ def add_player(room, browser, now):
     return p
 
 
+def migrate_kicked_players(room):
+    changed = False
+    for player in room['players'].values():
+        if player.get('banned'):
+            player['banned'] = False
+            changed = True
+    return changed
+
+
 def create_room(name, config, browser, now=None):
     now = now or time.time()
     room = dict(id=secrets.token_urlsafe(9), name=clean_name(name, '好友牌桌'), settings=settings(config),
@@ -540,7 +549,6 @@ def command(room, pid, data, now):
         require(target is not None and target['seat'] is not None, '玩家未入座')
         if kind == 'kick':
             require(target['id'] != pid, '不能踢出自己')
-            target['banned'] = True
             log(room, f"房主移除 {target['name']}", now, 'room')
         if in_hand(room, target['id']):
             target['leave'] = True
