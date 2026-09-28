@@ -106,6 +106,7 @@ export type Hand = {
     initial: number;
   } | null;
   last_actions: Record<string, string>;
+  action_events?: { seq: number; pid: string; kind: 'chips' | 'check'; at: number }[];
 };
 export type ChipTransfer = {
   kind: 'pot' | 'bounty' | 'squid'; source: string | null; target: string;

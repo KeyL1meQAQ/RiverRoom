@@ -431,14 +431,20 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
 test("flop appears one card at a time with one sound each; reconnect and mute do not replay", async ({ page }) => {
   await page.addInitScript(() => {
     const original = AudioBufferSourceNode.prototype.start;
+    const createBuffer = AudioContext.prototype.createBuffer;
+    AudioContext.prototype.createBuffer = function(...args: Parameters<typeof createBuffer>) {
+      (window as any).soundContext = this;
+      return createBuffer.apply(this, args);
+    };
     (window as any).dealSounds = 0;
     AudioBufferSourceNode.prototype.start = function(...args: Parameters<typeof original>) {
-      (window as any).dealSounds++;
+      if (this.buffer && Math.abs(this.buffer.duration - .085) < .001) (window as any).dealSounds++;
       return original.apply(this, args);
     };
   });
   const push = await mount(page, "preflop");
   await page.locator(".room-info h1").click();
+  await expect.poll(() => page.evaluate(() => (window as any).soundContext?.state)).toBe('running');
   await page.evaluate(() => {
     (window as any).boardFrames = [];
     let previous = 0;
@@ -461,9 +467,9 @@ test("flop appears one card at a time with one sound each; reconnect and mute do
   await page.reload();
   await expect(page.locator(".boards .card-dealt")).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).dealSounds)).toBe(0);
-  await page.getByRole("button", { name: "关闭发牌音效" }).click();
+  await page.getByRole("button", { name: "关闭音效" }).click();
   await page.reload();
-  await expect(page.getByRole("button", { name: "开启发牌音效" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "开启音效" })).toBeVisible();
   push("preflop");
   await expect(page.locator(".boards .playing-card:not(.placeholder)")).toHaveCount(0);
   push("flop");

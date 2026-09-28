@@ -464,6 +464,14 @@ def progress_action(room, state, display, now):
     hand['action_display'] = display
 
 
+def record_action_sound(hand, pid, kind, now):
+    # The action opportunity is unique within a hand, including its final action.
+    # Keep a small tail so a coalesced state broadcast cannot lose rapid actions.
+    events = hand.setdefault('action_events', [])
+    events.append(dict(seq=hand['action_seq'], pid=pid, kind=kind, at=now))
+    del events[:-32]
+
+
 def act(room, pid, data, now):
     hand = room['hand']
     require(room['phase'] == 'betting' and not room['recovery'], '当前不能进行下注操作')
@@ -494,6 +502,8 @@ def act(room, pid, data, now):
         raise GameError('未知行动')
     consume_bank(room, now)
     hand['last_actions'][pid] = '全下' if kind != 'fold' and display['stacks'][actor_index] == 0 else table_label
+    if kind != 'fold':
+        record_action_sound(hand, pid, 'check' if table_label == '过牌' else 'chips', now)
     log(room, f"{room['players'][pid]['name']} {label}", now)
     progress_action(room, state, display, now)
 
@@ -726,6 +736,8 @@ def tick(room, now):
             check = state.checking_or_calling_amount == 0
             display = betting_step(hand, state, 'check_or_call' if check else 'fold')
             hand['last_actions'][pid] = '过牌' if check else '弃牌'
+            if check:
+                record_action_sound(hand, pid, 'check', now)
             log(room, f"{room['players'][pid]['name']} 超时{'过牌' if check else '弃牌'}", now)
             progress_action(room, state, display, now)
     elif room['phase'] == 'runout' and now >= room['deadline']:
@@ -824,7 +836,8 @@ def public_hand(hand, viewer, include_hint=False):
         public_hand_labels=hands.public_labels(hand),
         **({'own_hand_labels': hands.own_labels(hand, viewer)} if include_hint else {}),
         result=hand['result'], awards=hand['awards'], votes=hand['votes'], voters=hand.get('voters', []),
-        runouts=hand['runouts'], seq=hand['action_seq'], clock=hand['clock'], last_actions=hand['last_actions'])
+        runouts=hand['runouts'], seq=hand['action_seq'], clock=hand['clock'], last_actions=hand['last_actions'],
+        **({'action_events': copy.deepcopy(hand.get('action_events', []))} if include_hint else {}))
 
 
 def view(room, viewer, now):

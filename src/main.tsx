@@ -35,7 +35,7 @@ import {
   X,
 } from "lucide-react";
 import type { Config, Hand, Player, PotResult, Room } from "./types";
-import { useBoardPresentation, useSoundPreference } from "./presentation";
+import { useBoardPresentation, useSoundPreference, useActionSounds } from "./presentation";
 import { RunoutEquity } from "./RunoutEquity";
 import { FlipNumber, SettlementLayer, settlementBalances, useMotionBaseline } from "./settlement";
 import { AchievementBadges, AchievementDetails } from "./Achievements";
@@ -989,6 +989,7 @@ function RoomScreen({
   const [interactionSent, setInteractionSent] = useState({ bubble: 0, single: 0, burst: 0 });
   const [now, setNow] = useState(Date.now() / 1000);
   const offset = useRef(0);
+  useActionSounds(room, now, connection, status === 'connected', sound.muted);
   const [modal, setModal] = useState<string | null>(null);
   const [seat, setSeat] = useState(0);
   const [nickname, setNickname] = useState("");
@@ -1330,7 +1331,7 @@ function RoomScreen({
             className="approval-button" onClick={() => { setPanel("manage"); setDrawer(true); }}>
             <ShieldCheck size={18} /><span className="approval-count">{pendingApprovals}</span>
           </IconButton>}
-          <IconButton title={sound.muted ? "开启发牌音效" : "关闭发牌音效"} onClick={sound.toggle}>
+          <IconButton title={sound.muted ? "开启音效" : "关闭音效"} onClick={sound.toggle}>
             {sound.muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
           </IconButton>
           <span
