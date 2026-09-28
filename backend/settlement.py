@@ -4,6 +4,8 @@ These events never move real chips. Their amounts come from the engine and the
 actual bonus ledgers, and their starting balances are captured before bonuses.
 """
 
+from .limits import SEAT_COUNT
+
 
 def accounts(room, hand, state, payouts):
     before = {pid: stack - paid for pid, stack, paid in zip(hand['ids'], state.stacks, payouts)}
@@ -16,7 +18,7 @@ def timeline(hand, captured, now):
         seat = captured[pid]['seat']
         # Dict insertion order preserves round participation order for leavers
         # via the explicit member order below, rather than inventing a seat.
-        return (0, (seat - hand['button'] - 1) % 9) if seat is not None else (1, member_order.get(pid, len(member_order)))
+        return (0, (seat - hand['button'] - 1) % SEAT_COUNT) if seat is not None else (1, member_order.get(pid, len(member_order)))
 
     squid = (hand.get('squid') or {}).get('settlement')
     member_order = {m['pid']: i for i, m in enumerate((squid or {}).get('members', []))}

@@ -122,6 +122,7 @@ test('nine-seat badges fit cards, player information, and action capsules at all
           }
           return rect;
         };
+        const stage = document.querySelector('.table-stage')!.getBoundingClientRect();
         const issues = [...document.querySelectorAll('.achievement-badges')].flatMap(badges => {
           const bounds = badges.getBoundingClientRect();
           const frame = badges.closest('.seat-wrap')!.querySelector('.seat')!.getBoundingClientRect();
@@ -143,13 +144,13 @@ test('nine-seat badges fit cards, player information, and action capsules at all
             ...(bounds.top >= frame.top || bounds.bottom <= frame.top || bounds.bottom > frame.top + 6
               ? [`${owner}: badge does not hang over the top edge`] : []),
             ...digits.map(() => `${owner}: count overflows badge`),
-            ...(bounds.right > innerWidth || bounds.left < 0 ? [`${owner}: outside viewport`] : [])];
+            ...(bounds.right > stage.right || bounds.left < stage.left ? [`${owner}: outside table canvas`] : [])];
         });
         const frames = [...document.querySelectorAll('.seat.occupied')];
         const cards = [...document.querySelectorAll('.hole-cards .playing-card')];
         for (const card of cards) {
           const bounds = visibleBounds(card);
-          if (bounds.left < 0 || bounds.right > innerWidth) issues.push(`${card.closest('.seat-wrap')!.className}: cards outside viewport`);
+          if (bounds.left < stage.left || bounds.right > stage.right) issues.push(`${card.closest('.seat-wrap')!.className}: cards outside table canvas`);
           if (innerWidth <= 760) {
             const frame = card.closest('.seat-wrap')!.querySelector('.seat')!.getBoundingClientRect();
             if (bounds.left < frame.left || bounds.right > frame.right) issues.push(`${card.closest('.seat-wrap')!.className}: cards exceed player frame horizontally`);

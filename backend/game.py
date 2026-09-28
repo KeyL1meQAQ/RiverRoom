@@ -2,6 +2,8 @@ import copy
 import secrets
 import time
 
+from .limits import SEAT_COUNT
+
 from . import achievements, bounty, engine, equity, hands, squid, settlement
 
 MAX_INTEGER = 9_007_199_254_740_991
@@ -204,7 +206,7 @@ def eligible(room, now):
 
 
 def next_seat(seats, after):
-    return min(seats, key=lambda s: (s - after - 1) % 9)
+    return min(seats, key=lambda s: (s - after - 1) % SEAT_COUNT)
 
 
 def positions(room, players):
@@ -221,7 +223,7 @@ def positions(room, players):
         sb = room['big_blind']
         ring = sorted(set(seats + [sb]))
         button = ring[(ring.index(sb) - 1) % len(ring)]
-    ordered = sorted(players, key=lambda p: (p['seat'] - button - 1) % 9)
+    ordered = sorted(players, key=lambda p: (p['seat'] - button - 1) % SEAT_COUNT)
     return dict(button=button, sb=sb, bb=bb, ids=[p['id'] for p in ordered])
 
 
@@ -504,7 +506,7 @@ def command(room, pid, data, now):
         require(pid == room['owner'], '此操作需要房主权限')
     if kind == 'request_seat':
         require(not room['closing'] and p['seat'] is None and not p['banned'], '当前不能申请入座')
-        seat = integer(data.get('seat'), 0, 8)
+        seat = integer(data.get('seat'), 0, SEAT_COUNT - 1)
         require(not any(x['seat'] == seat for x in room['players'].values()), '座位已被占用')
         name = clean_name(data.get('name', ''))
         require(not any(x['id'] != pid and x['name'] == name and x['seat'] is not None for x in room['players'].values()), '该昵称已被使用')

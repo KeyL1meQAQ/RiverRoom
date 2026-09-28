@@ -1,3 +1,4 @@
+import { relativeSeat } from "./table-layout";
 import React, { useState } from "react";
 import type { Player, Room } from "./types";
 import "./interactions.css";
@@ -58,7 +59,7 @@ export function ThrowPicker({ target, send, singleDisabled, burstDisabled }: {
 
 function positionFor(room: Room, ownSeat: number, pid: string, positions: number[][]) {
   const seat = room.players.find(player => player.id === pid)?.seat;
-  return seat == null ? null : positions[(seat - ownSeat + 9) % 9];
+  return seat == null ? null : positions[relativeSeat(seat, ownSeat)];
 }
 
 export function InteractionLayer({ room, ownSeat, events, desktop, mobile }: {
@@ -72,8 +73,8 @@ export function InteractionLayer({ room, ownSeat, events, desktop, mobile }: {
     {events.filter(event => event.kind === "bubble").map(event => {
       const player = room.players.find(p => p.id === event.from);
       if (player?.seat == null) return null;
-      const position = (player.seat - ownSeat + 9) % 9;
-      return <div className={`table-bubble position-${position} ${EMOJI.includes(event.preset) ? "emoji" : ""} ${position >= 3 && position <= 6 ? "below" : ""}`}
+      const position = relativeSeat(player.seat, ownSeat);
+      return <div className={`table-bubble position-${position} ${EMOJI.includes(event.preset) ? "emoji" : ""} ${position >= 3 && position <= 7 ? "below" : ""}`}
         key={event.id} role="status" style={{
           "--bubble-x": `${desktop[position][0]}%`, "--bubble-y": `${desktop[position][1]}%`,
           "--bubble-mobile-x": `${mobile[position][0]}%`, "--bubble-mobile-y": `${mobile[position][1]}%`,

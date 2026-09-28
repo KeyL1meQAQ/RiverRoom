@@ -177,20 +177,15 @@ test('mobile betting chips follow the player frame and own cards', async ({ page
         };
         return [0, 1, 2, 3, 6, 7, 8].map(measure);
       });
-      const [own, bottomLeft, middleLeft, upperLeft, upperRight, middleRight, bottomRight] = positions;
+      const [own, lowerLeft, middleLeft, upperLeft, upperRight, middleRight, lowerRight] = positions;
       const center = (r: DOMRect) => (r.top + r.bottom) / 2;
-      expect(own.chip.bottom, `${width}px ${count} cards: own chip above cards`).toBeLessThan(own.cards.top);
+      expect(own.chip.bottom).toBeLessThan(own.cards.top);
       expect(own.cards.top - own.chip.bottom).toBeLessThanOrEqual(22);
-      for (const seat of [middleLeft, middleRight]) {
-        expect(Math.abs(center(seat.chip) - seat.frame.top), `${width}px ${count} cards: chip at frame top`).toBeLessThanOrEqual(6);
+      for (const seat of [lowerLeft, middleLeft, lowerRight]) {
+        expect(Math.abs(center(seat.chip) - seat.frame.top)).toBeLessThanOrEqual(6);
       }
-      for (const seat of [upperLeft, upperRight]) {
-        expect(center(seat.chip)).toBeGreaterThan(center(seat.frame));
-        expect(center(seat.chip)).toBeLessThan(seat.frame.bottom);
-      }
-      for (const seat of [bottomLeft, bottomRight]) {
-        expect(center(seat.chip)).toBeGreaterThan(seat.cards.top);
-        expect(center(seat.chip)).toBeLessThan(seat.frame.top);
+      for (const seat of [upperLeft, upperRight, middleRight]) {
+        expect(Math.abs(center(seat.chip) - seat.frame.bottom)).toBeLessThanOrEqual(6);
       }
     }
   }
@@ -337,21 +332,24 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
           const gap = Math.max(seat.left - rect.right, rect.left - seat.right, seat.top - rect.bottom, rect.top - seat.bottom);
           const position = Number(badge.parentElement!.className.match(/position-(\d)/)![1]);
           const cards = badge.parentElement!.querySelector('.hole-cards')!.getBoundingClientRect();
-          const cornerSeat = innerWidth > 760 && [1, 3, 6, 8].includes(position);
-          // Folded seats retain the same card slot with frosted placeholders.
-          const cardBottom = cards.bottom;
-          const inward = cornerSeat
-            ? [6, 8].includes(position)
-              ? Math.abs(rect.right - (cards.left - 8)) <= 1 &&
-                (position === 8 ? Math.abs(rect.bottom - (cards.top - 8)) <= 1 : rect.top >= cardBottom + 7)
-              : rect.left >= seat.right + 7 && (position === 1 ? rect.bottom <= seat.top - 7 : rect.top >= seat.bottom + 7)
-            : [4, 5].includes(position) ? rect.top >= seat.bottom
-            : position === 0 ? rect.bottom <= Math.min(seat.top, cards.top)
-            : position < 4 ? rect.left >= seat.right : rect.right <= seat.left;
-
-          const peerPosition = ({ 1: 8, 8: 1, 2: 7, 7: 2, 3: 6, 6: 3 } as Record<number, number>)[position];
-          const peer = cornerSeat ? document.querySelector(`.position-${peerPosition} .seat-bet`) : null;
-          const aligned = !peer || Math.abs(rect.top - peer.getBoundingClientRect().top) <= 1;
+          const sideGap = [2,4,7,9].includes(position) ? 5 : 7;
+          const inward = innerWidth > 760
+            ? [0,1].includes(position) ? rect.bottom <= Math.min(seat.top,cards.top) - 7
+              : [5,6].includes(position) ? rect.top >= Math.max(seat.bottom,cards.bottom) + 7
+              : [2,3,4].includes(position) ? rect.left >= Math.max(seat.right,cards.right) + sideGap
+              : rect.right <= Math.min(seat.left,cards.left) - sideGap
+            : position === 5 ? rect.top >= seat.bottom
+            : position === 0 ? rect.bottom <= cards.top
+            : position < 5 ? rect.left >= seat.right : rect.right <= seat.left;
+          const peers = innerWidth > 760
+            ? {0:1,1:0,2:9,9:2,3:8,8:3,4:7,7:4,5:6,6:5}
+            : {1:9,9:1,2:8,8:2,3:7,7:3,4:6,6:4};
+          const peerPosition = (peers as Record<number,number>)[position];
+          const peer = document.querySelector(`.position-${peerPosition} .seat-bet`);
+          const peerRect = peer?.getBoundingClientRect();
+          const aligned = !peerRect || (innerWidth <= 760
+            ? Math.abs((rect.top + rect.bottom) / 2 - (peerRect.top + peerRect.bottom) / 2) <= 1
+            : Math.abs(rect.top - peerRect.top) <= 1);
           const collisions = [...blockers, ...badges.slice(index + 1)].filter(other => {
             const otherRect = other.getBoundingClientRect();
             return otherRect.width && otherRect.height && intersects(rect, otherRect);
@@ -367,7 +365,7 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
             ...(textOverflow ? [`${badge.textContent} text overflow`] : []),
             ...(!inward ? [`${badge.parentElement!.className} is not on the inward side`] : []),
             ...(!aligned ? [`${badge.parentElement!.className} is not level with position-${peerPosition}`] : []),
-            ...(gap < (innerWidth > 760 ? 7 : 5)
+            ...(gap < (innerWidth > 760 ? sideGap : 5)
               ? [`${badge.parentElement!.className} gap is only ${gap}px`] : []),
             ...(innerWidth > 760 && badge.children.length === 2 &&
               Math.abs((badge.children[0].getBoundingClientRect().top + badge.children[0].getBoundingClientRect().bottom) / 2 - (badge.children[1].getBoundingClientRect().top + badge.children[1].getBoundingClientRect().bottom) / 2) > 1
@@ -380,6 +378,8 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
         await expect(page.locator('.bet-amount').first()).toHaveCSS('font-size', width <= 760 ? '12px' : '14px');
       }
       if (width > 760) {
+        // A short window may scroll; the bottom margin must clear floating controls.
+        await page.locator('.room-main').evaluate(el => { el.scrollTop = el.scrollHeight; });
         const ownHint = await page.locator('.own-hand-label').boundingBox();
         const controls = await page.locator('.action-bar').boundingBox();
         expect(ownHint!.y + ownHint!.height, `${name} own cards stay above controls`).toBeLessThanOrEqual(controls!.y);
@@ -589,7 +589,12 @@ test('nine-player double runout and ordinary play fit with readable cards and se
         const texts = [...document.querySelectorAll('.seat-top, .stack, .seat-payout')]
           .filter(node => node.getBoundingClientRect().height > 0);
         const boards = document.querySelector('.boards')!.getBoundingClientRect();
-        const issues = cards.flatMap(card => texts.filter(text => overlaps(card.getBoundingClientRect(), text.getBoundingClientRect()))
+        const visibleCards = (card: Element) => {
+          const r = card.getBoundingClientRect();
+          const frame = card.closest('.seat-wrap')!.querySelector('.seat')!.getBoundingClientRect();
+          return innerWidth <= 760 ? new DOMRect(r.x,r.y,r.width,Math.max(0,frame.top-r.top)) : r;
+        };
+        const issues = cards.flatMap(card => texts.filter(text => overlaps(visibleCards(card), text.getBoundingClientRect()))
           .map(text => `${card.parentElement!.className} cards overlap ${text.parentElement!.className} ${text.className}`));
         for (const seat of document.querySelectorAll('.seat.occupied')) {
           if (overlaps(boards, seat.getBoundingClientRect())) issues.push(`board overlaps ${seat.parentElement?.className}`);
@@ -616,8 +621,9 @@ test('nine-player double runout and ordinary play fit with readable cards and se
               if (Math.abs(cardOverlap - 8) > 1) issues.push(`${wrap.className} card overlap is ${cardOverlap}px`);
             } else {
               const cardOverlap = cards.bottom - frame.top;
-              if (cardOverlap < 2 || cardOverlap > 6) issues.push(`${wrap.className} mobile card overlap is ${cardOverlap}px`);
-              if (label?.left < 0 || label?.right > innerWidth) issues.push(`${wrap.className} hand label leaves viewport`);
+              if (cardOverlap < 20 || cardOverlap > 30) issues.push(`${wrap.className} mobile card overlap is ${cardOverlap}px`);
+              const canvas = document.querySelector('.table-stage')!.getBoundingClientRect();
+              if (label && (label.left < canvas.left || label.right > canvas.right)) issues.push(`${wrap.className} hand label leaves canvas`);
             }
           }
         }

@@ -140,10 +140,10 @@
 }
 .room-shell .seat-wrap .seat.self { border-color: #63bc85; }
 .room-shell .seat-wrap .seat.acting {
-  background: #f9fbf8;
-  border-color: #eceeeb;
+  background: #fff;
+  border-color: #fff;
   color: #242824;
-  box-shadow: 0 0 0 2px #9edf56, 0 0 18px #a9df5b95;
+  box-shadow: 0 0 10px #ffffff70, 0 0 24px #ffffff38, 0 4px 12px #0006;
 }
 .room-shell .seat-wrap .seat.winning-seat {
   background: #f6f9cf;
@@ -151,7 +151,7 @@
   color: #29351a;
   box-shadow: 0 0 0 2px #d7ec88, 0 0 20px #c9ed7b9e;
 }
-.room-shell .seat-wrap .seat.muted:not(.winning-seat) { background: #333435; color: #a7aaa7; }
+.room-shell .seat-wrap .seat.muted:not(.winning-seat):not(.acting) { background: #333435; color: #a7aaa7; }
 .room-shell .seat-wrap .seat.empty {
   background: #222726ae;
   border-color: #71ae8b8a;
@@ -380,39 +380,6 @@
   .room-shell .table-stage .own-seat .hole-cards .playing-card { width: 48px; }
   .room-shell .table-stage .own-seat .hole-cards .playing-card > b { font-size: 25px; }
   .room-shell .table-stage .own-seat .hole-cards .playing-card > span { top: 29px; font-size: 21px; }
-  .room-shell .table-stage .position-0 .seat-bet {
-    top: -67px !important;
-    left: 50%;
-    right: auto;
-    transform: translate(-50%, -100%);
-  }
-  .room-shell .table-stage .position-1 .seat-bet,
-  .room-shell .table-stage .position-8 .seat-bet {
-    top: -15px !important;
-    transform: translateY(-100%);
-  }
-  .room-shell .table-stage:has(.large-bet) .position-1 .seat-bet,
-  .room-shell .table-stage:has(.large-bet) .position-8 .seat-bet {
-    top: 50% !important;
-    transform: translateY(-50%);
-  }
-  .room-shell .table-stage .position-8 .seat-bet {
-    right: calc(100% + 6px);
-    padding-inline: 3px;
-    max-width: 34px;
-  }
-  .room-shell .table-stage .position-8 .seat-bet .bet-amount { font-size: 11px; }
-  .room-shell .table-stage .position-0 .dealer {
-    top: calc(100% + 1px);
-    left: auto;
-    right: 0;
-  }
-  .room-shell .table-stage:has(.large-bet) .position-1,
-  .room-shell .table-stage:has(.large-bet) .position-8 { top: 70%; }
-  .room-shell .table-stage:has(.seat-wrap.large-amounts) .position-2,
-  .room-shell .table-stage:has(.seat-wrap.large-amounts) .position-7 { top: 60%; }
-  .room-shell .table-stage:has(.seat-wrap.large-amounts):not(:has(.large-bet)) .position-1,
-  .room-shell .table-stage:has(.seat-wrap.large-amounts):not(:has(.large-bet)) .position-8 { top: 80%; }
   .room-shell .seat .seat-hand-label { background: #ed6973; border-color: #fca4a9; }
   .room-shell .seat.winning-seat .seat-hand-label { background: #7568d8; border-color: #ac9cff; }
   .room-shell .action-bar {

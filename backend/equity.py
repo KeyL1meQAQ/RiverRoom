@@ -3,6 +3,8 @@
 The native enumerator is display-only; PokerKit remains the settlement engine.
 Dead cards include folded holes and burns, but never the future deck order.
 """
+from .limits import SEAT_COUNT
+
 from ctypes import CDLL, POINTER, c_int, c_uint32, c_uint64
 from functools import lru_cache
 from pathlib import Path
@@ -33,7 +35,7 @@ def library():
 @lru_cache(maxsize=512)
 def count_wins(holes, board, dead=(), short_deck=False):
     """Enumerate every remaining board once, returning (win counts, total)."""
-    if not 2 <= len(holes) <= 9 or any(len(h) != 2 for h in holes) or len(board) > 5:
+    if not 2 <= len(holes) <= SEAT_COUNT or any(len(h) != 2 for h in holes) or len(board) > 5:
         raise ValueError('Invalid runout')
     active = tuple(c for h in holes for c in h) + board
     if len(set(active + dead)) != len(active + dead):

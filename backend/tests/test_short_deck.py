@@ -170,7 +170,7 @@ def test_squid_departed_funds_remain_held_across_mode_switch():
     assert room['players'][ids[3]]['buyout'] == departed['stack'] - 30
 
 
-@pytest.mark.parametrize('players,prefix,twice', [(2, 0, False), (2, 0, True), (9, 0, True), (9, 3, True), (9, 4, True)])
+@pytest.mark.parametrize('players,prefix,twice', [(2, 0, False), (2, 0, True), (9, 0, True), (9, 3, True), (9, 4, True), (10, 0, True), (10, 3, True), (10, 4, True)])
 def test_full_table_runouts_replay_privacy_and_card_count(players, prefix, twice):
     room, ids = table((100,) * players, short_deck=True, twice=twice)
     observer = game.add_player(room, 'observer', 1000)['id']
@@ -199,8 +199,13 @@ def test_full_table_runouts_replay_privacy_and_card_count(players, prefix, twice
     assert all(set(board) <= set(DECK) for board in hand['boards'])
     assert replay.stacks == [room['players'][pid]['stack'] for pid in hand['ids']]
     assert sum(replay.stacks) == 100 * players
-    if players == 9 and prefix == 0:
-        assert len(replay.deck_cards) == 2
+    if players == 10:
+        used = [card for cards in hand['dealt'].values() for card in cards]
+        used += hand['boards'][0] + hand['boards'][1][prefix:]
+        used += [str(card) for card in replay.burn_cards]
+        assert len(used) == len(set(used))  # No reserved card was actually reused.
+    if players >= 9 and prefix == 0:
+        assert len(replay.deck_cards) == 36 - 2 * players - 16
         assert len(replay.burn_cards) == 6
 
 

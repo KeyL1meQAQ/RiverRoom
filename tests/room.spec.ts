@@ -111,12 +111,12 @@ test("mobile lobby fits a narrow viewport", async ({ page }) => {
   await expect(page.getByLabel("房间链接或编码")).toBeVisible();
 });
 
-test("nine seats render across desktop and mobile without control overlap", async ({
+test("ten seats render across desktop and mobile without control overlap", async ({
   browser,
   baseURL,
 }) => {
   const contexts = await Promise.all(
-    Array.from({ length: 9 }, () =>
+    Array.from({ length: 10 }, () =>
       browser.newContext({ viewport: { width: 1440, height: 960 } }),
     ),
   );
@@ -130,10 +130,11 @@ test("nine seats render across desktop and mobile without control overlap", asyn
     "陈一",
     "七月",
     "向晚",
+    "星河",
   ];
   const host = contexts[0];
   const created = await host.request.post(`${baseURL}/api/rooms`, {
-    data: { name: "九人牌桌验收", settings: { straddle: true, twice: true } },
+    data: { name: "十人牌桌验收", settings: { straddle: true, twice: true } },
   });
   expect(created.ok()).toBeTruthy();
   const rid = (await created.json()).id;
@@ -144,7 +145,7 @@ test("nine seats render across desktop and mobile without control overlap", asyn
     });
     expect(r.ok(), await r.text()).toBeTruthy();
   };
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 10; i++) {
     await contexts[i].request.get(root);
     await command(i, {
       type: "request_seat",
@@ -170,8 +171,8 @@ test("nine seats render across desktop and mobile without control overlap", asyn
   );
   await command(utg.seat, { type: "straddle", value: true });
   const page = pages[0];
-  await expect(page.locator(".occupied")).toHaveCount(9);
-  await expect(page.locator(".hole-cards .playing-card")).toHaveCount(18);
+  await expect(page.locator(".occupied")).toHaveCount(10);
+  await expect(page.locator(".hole-cards .playing-card")).toHaveCount(20);
   await page.screenshot({
     path: "artifacts/full-table-desktop.png",
     fullPage: true,
@@ -198,7 +199,10 @@ test("nine seats render across desktop and mobile without control overlap", asyn
       Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1 &&
       Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1;
     const cards = seats.map((s) =>
-      s.parentElement!.querySelector(".hole-cards")!.getBoundingClientRect(),
+      (() => {
+        const card=s.parentElement!.querySelector(".hole-cards")!.getBoundingClientRect();
+        return new DOMRect(card.x,card.y,card.width,Math.max(0,s.getBoundingClientRect().top-card.top));
+      })(),
     );
     const text = seats.flatMap((s) =>
       [...s.querySelectorAll(".stack,.seat-top,.seat-bottom")].map((x) =>

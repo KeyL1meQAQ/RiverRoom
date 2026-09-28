@@ -117,21 +117,24 @@
 .room-shell .seat-bet { z-index: 5; }
 
 @media (max-width: 760px) {
-  .room-shell .play-area { padding-bottom: 0; }
+  /* 360 x 800 is the content floor, not a device size. Only room-main scrolls. */
+  .room-shell .room-main { overflow: auto; overscroll-behavior: contain; }
+  .room-shell .play-area { min-width: 360px; flex-shrink: 0; padding: 0; }
   .room-shell .table-action-clearance {
     display: block;
-    flex: 0 0 calc(154px + env(safe-area-inset-bottom));
+    flex: 0 0 calc(144px + env(safe-area-inset-bottom));
     pointer-events: none;
   }
-  .room-shell .play-area:has(.table-stage.showing-result) .table-action-clearance {
-    flex-basis: calc(214px + env(safe-area-inset-bottom));
-  }
   .room-shell .table-stage,
+  .room-shell .table-stage.showing-result,
   .room-shell .table-stage:has(.seat-bet.large-bet),
   .room-shell .table-stage:has(.seat-wrap.large-amounts) {
-    min-height: 560px;
+    min-width: 360px;
+    min-height: 800px;
     max-height: none;
     width: 100%;
+    max-width: 480px;
+    flex: 1 0 800px;
   }
   .room-shell .table-stage .seat-wrap,
   .room-shell .table-stage .seat-wrap[class*="position-"] {
@@ -140,123 +143,115 @@
     left: var(--mx) !important;
     right: auto !important;
     transform: translate(-50%, -50%);
-    width: clamp(90px, 27vw, 112px);
-    height: 52px;
-    --seat-width: 100%;
-    --seat-height: 52px;
+    width: 104px;
+    height: 54px;
+    --seat-width: 104px;
+    --seat-height: 54px;
     --seat-top: 0px;
   }
-  .room-shell .table-stage .position-0 { width: clamp(108px, 30vw, 124px) !important; }
-  .room-shell .table-stage .seat-wrap .seat {
+  .room-shell .table-stage .seat-wrap .seat,
+  .room-shell .table-stage .seat-wrap.large-amounts .seat.occupied {
+    position: absolute;
     top: 0;
     right: 0;
-    left: auto;
+    left: 0;
     width: 100%;
-    min-height: 52px;
-    padding: 4px 7px;
+    height: 54px;
+    min-height: 54px;
+    margin: 0;
+    padding: 3px 6px;
+    transform: none;
+    z-index: 3;
   }
-  .room-shell .table-stage .seat-top { height: 22px; }
-  .room-shell .table-stage .seat-name { font-size: 14px; line-height: 20px; }
-  .room-shell .table-stage .seat-stack-row .stack { line-height: 19px; }
+  .room-shell .table-stage .seat.empty { justify-content: center; gap: 1px; }
+  .room-shell .table-stage .seat-top { height: 18px; flex-shrink: 0; padding: 0; }
+  .room-shell .table-stage .seat-name { font-size: 14px; line-height: 18px; }
+  .room-shell .table-stage .seat-stack-row { height: 18px; min-height: 18px; flex-shrink: 0; }
+  .room-shell .table-stage .seat-stack-row .stack { font-size: 16px; line-height: 18px; }
+  .room-shell .table-stage .large-amounts .seat-stack-row .stack { font-size: 12px; }
+  .room-shell .table-stage .seat .seat-hand-label {
+    position: absolute; top: auto; bottom: 0; left: 0; right: 0;
+    width: 100%; height: 12px; margin: 0; padding: 0 4px;
+    border: 0; font-size: 9px; line-height: 12px;
+  }
+  .room-shell .table-stage .seat .seat-hand-label > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .room-shell .table-stage .hole-cards,
   .room-shell .table-stage .own-seat .hole-cards {
-    top: calc(4px - var(--mobile-hole-width) * 7 / 5);
+    top: -38px;
     left: 50%;
     right: auto;
+    bottom: auto;
     transform: translateX(-50%);
-    --mobile-hole-width: clamp(40px, 11.4vw, 48px);
+    --mobile-hole-width: 44px;
+    z-index: 2;
   }
-  .room-shell .table-stage .hole-cards .playing-card { width: var(--mobile-hole-width); }
-  .room-shell .table-stage .own-seat .hole-cards .playing-card { width: var(--mobile-hole-width); }
+  .room-shell .table-stage .hole-cards .playing-card,
+  .room-shell .table-stage .own-seat .hole-cards .playing-card { width: 44px; }
   .room-shell .table-stage .hole-cards > :nth-child(2) { margin-left: -5px; }
-  .room-shell .table-stage .hole-cards .playing-card > b { font-size: 22px; }
-  .room-shell .table-stage .hole-cards .playing-card > span { top: 26px; font-size: 19px; }
-  .room-shell .table-stage .own-seat .hole-cards { top: calc(4px - var(--mobile-hole-width) * 7 / 5); --mobile-hole-width: clamp(46px, 12.5vw, 52px); }
-  .room-shell .table-stage .own-seat .hole-cards .playing-card > b { font-size: 25px; }
-  .room-shell .table-stage .own-seat .hole-cards .playing-card > span { top: 29px; font-size: 21px; }
+  .room-shell .table-stage .hole-cards .playing-card > b,
+  .room-shell .table-stage .own-seat .hole-cards .playing-card > b { top: 1px; left: 3px; font-size: 18px; line-height: 19px; }
+  .room-shell .table-stage .hole-cards .playing-card > span,
+  .room-shell .table-stage .own-seat .hole-cards .playing-card > span { top: 21px; left: 3px; font-size: 14px; line-height: 14px; }
   .room-shell .table-stage .table-center,
   .room-shell .table-stage:not(.showing-result) .table-center,
+  .room-shell .table-stage.showing-result .table-center,
   .room-shell .table-stage:has(.seat-wrap.large-amounts) .table-center {
-    top: 44%;
-    width: calc(100% - 48px);
-    gap: 7px;
+    top: 50%; width: calc(100% - 36px); gap: 7px;
   }
-  .room-shell .boards .playing-card { width: clamp(41px, 13.3vw, 55px); }
+  .room-shell .boards .playing-card { width: 48px; }
   .room-shell .boards .playing-card > b,
-  .room-shell .boards .playing-card > span { font-size: clamp(22px, 6.2vw, 29px); }
-  .room-shell .board { gap: clamp(3px, 1vw, 5px); }
+  .room-shell .boards .playing-card > span { font-size: 26px; }
+  .room-shell .board { gap: 5px; }
   .room-shell .pot-capsule { min-width: 82px; }
-  .room-shell .seat-wrap .seat.occupied { min-height: 52px; }
-  .room-shell .seat-wrap.large-amounts .seat.occupied { min-height: 60px; }
+  .room-shell .side-pots { max-height: 28px; overflow-y: auto; }
   .room-shell .table-stage .seat-wrap .seat-bet {
-    top: 50% !important;
+    top: -3px !important;
     bottom: auto !important;
-    left: calc(100% + 5px) !important;
+    left: calc(100% + 6px) !important;
     right: auto !important;
-    max-width: 78px;
+    max-width: 62px;
     min-width: 0;
     width: max-content;
     height: auto;
     min-height: 24px;
-    padding: 2px 7px;
+    padding: 2px 6px;
     transform: translateY(-50%) !important;
   }
+  .room-shell .table-stage .seat-wrap .seat-bet .bet-amount { font-size: 12px; line-height: 16px; white-space: normal; }
+  .room-shell .table-stage .seat-bet wbr { display: inline; }
+  .room-shell .table-stage .position-3 .seat-bet,
   .room-shell .table-stage .position-4 .seat-bet,
-  .room-shell .table-stage .position-5 .seat-bet {
-    top: calc(100% + 8px) !important;
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-  }
+  .room-shell .table-stage .position-6 .seat-bet,
+  .room-shell .table-stage .position-7 .seat-bet { top: calc(100% - 3px) !important; }
   .room-shell .table-stage .position-6 .seat-bet,
   .room-shell .table-stage .position-7 .seat-bet,
-  .room-shell .table-stage .position-8 .seat-bet {
-    left: auto !important;
-    right: calc(100% + 5px) !important;
-  }
+  .room-shell .table-stage .position-8 .seat-bet,
+  .room-shell .table-stage .position-9 .seat-bet { left: auto !important; right: calc(100% + 6px) !important; }
   .room-shell .table-stage .position-0 .seat-bet {
-    top: -75px !important;
-    left: 50% !important;
-    right: auto !important;
-    max-width: 98px;
-    transform: translate(-50%, -100%) !important;
+    top: -43px !important; left: 50% !important; right: auto !important;
+    max-width: 104px; transform: translate(-50%, -100%) !important;
   }
-  .room-shell .table-stage .position-1 .seat-bet,
-  .room-shell .table-stage .position-8 .seat-bet {
-    top: calc(50% - 60px) !important;
-    transform: translateY(-50%) !important;
-  }
-  .room-shell .table-stage .position-1 .seat-bet { left: calc(100% + 14px) !important; }
-  .room-shell .table-stage .position-8 .seat-bet { right: calc(100% + 14px) !important; }
-  .room-shell .table-stage .position-8 .seat-bet { max-width: 78px; }
-  .room-shell .table-stage .position-8 .seat-bet .bet-amount { font-size: 12px; }
-  .room-shell .table-stage .position-2 .seat-bet,
-  .room-shell .table-stage .position-7 .seat-bet {
-    top: -2px !important;
-    transform: translateY(-50%) !important;
-  }
-  .room-shell .table-stage .position-3 .seat-bet,
-  .room-shell .table-stage .position-6 .seat-bet {
-    top: calc(50% + 5px) !important;
-    transform: translateY(-50%) !important;
+  .room-shell .table-stage .position-5 .seat-bet {
+    top: calc(100% + 7px) !important; left: 50% !important; right: auto !important;
+    max-width: 104px; transform: translateX(-50%) !important;
   }
   .room-shell .table-stage .seat-wrap .dealer {
-    top: -23px !important;
-    bottom: auto !important;
-    left: calc(100% + 4px) !important;
-    right: auto !important;
+    top: 26px !important; bottom: auto !important;
+    left: calc(100% + 6px) !important; right: auto !important;
   }
-  .room-shell .table-stage .position-0 .dealer {
-    top: calc(100% - 22px) !important;
-    left: -22px !important;
-  }
-  .room-shell .table-stage .position-8 .dealer { top: -85px !important; }
-  .room-shell .table-stage .position-1 .dealer { top: calc(100% + 6px) !important; left: calc(50% - 10px) !important; }
-  .room-shell .table-stage .position-4 .dealer { top: calc(100% + 5px) !important; left: -24px !important; }
-  .room-shell .table-stage .position-5 .dealer { top: calc(100% + 5px) !important; left: calc(100% + 5px) !important; }
   .room-shell .table-stage .position-6 .dealer,
-  .room-shell .table-stage .position-7 .dealer { left: -23px !important; }
-  .room-shell .table-stage .position-2 .dealer { top: -85px !important; left: 5px !important; }
-  .room-shell .table-stage .position-7 .dealer { top: -85px !important; left: calc(100% - 25px) !important; }
+  .room-shell .table-stage .position-7 .dealer,
+  .room-shell .table-stage .position-8 .dealer,
+  .room-shell .table-stage .position-9 .dealer { left: -25px !important; }
+  .room-shell .table-stage .position-3 .dealer,
+  .room-shell .table-stage .position-4 .dealer,
+  .room-shell .table-stage .position-6 .dealer,
+  .room-shell .table-stage .position-7 .dealer { top: 0px !important; }
+  .room-shell .table-stage .position-0 .dealer,
+  .room-shell .table-stage .position-5 .dealer { top: 12px !important; left: -25px !important; }
+}
+
+@media (max-width: 760px) {
   .room-shell .action-content {
     right: 8px;
     left: 8px;
@@ -285,26 +280,77 @@
   .room-shell .reveal-countdown { font-size: 11px; }
 }
 
-@media (max-width: 340px) {
-  .room-shell .table-stage,
-  .room-shell .table-stage:has(.seat-bet.large-bet),
-  .room-shell .table-stage:has(.seat-wrap.large-amounts) { min-height: 630px; }
-  .room-shell .table-stage .seat-wrap { width: 88px; }
-  .room-shell .table-stage .seat-name { font-size: 13px; }
+
+/* Desktop: two seats at each end, three on each side of the ellipse. */
+@media (min-width: 761px) {
+  .room-shell .room-main { overflow: auto; overscroll-behavior: contain; }
+  .room-shell .play-area { min-width: 1024px; flex-shrink: 0; padding-bottom: 0; }
+  .room-shell .table-stage {
+    min-width: 1000px;
+    min-height: 660px;
+    max-height: none;
+    flex: 1 0 660px;
+  }
+  .room-shell .table-action-clearance {
+    display: block;
+    flex: 0 0 calc(184px + env(safe-area-inset-bottom));
+    pointer-events: none;
+  }
+  .room-shell .table-stage .seat-wrap[class*="position-"] {
+    top: var(--y); left: var(--x); bottom: auto; right: auto;
+    transform: translate(-50%, -50%);
+    --player-area-bottom: max(var(--hole-height), var(--seat-top) + var(--seat-height));
+  }
+  .room-shell .table-stage .seat-wrap.has-result {
+    --player-area-bottom: max(var(--hole-height), var(--seat-top) + 68px);
+  }
+  .room-shell .table-stage .seat-wrap.large-amounts {
+    --player-area-bottom: max(var(--hole-height), var(--seat-top) + 83px);
+  }
+  .room-shell .table-stage .seat-wrap .seat-bet {
+    top: -14px !important; bottom: auto !important;
+    left: 50% !important; right: auto !important;
+    transform: translate(-50%, -100%) !important;
+  }
+  .room-shell .table-stage .seat-wrap:is(.position-4,.position-5,.position-6,.position-7) .seat-bet {
+    top: calc(var(--player-area-bottom) + 16px) !important;
+    transform: translateX(-50%) !important;
+  }
+  .room-shell .table-stage .seat-wrap:is(.position-2,.position-3,.position-4) .seat-bet {
+    left: calc(100% + 12px) !important;
+    transform: translateY(-100%) !important;
+  }
+  .room-shell .table-stage .seat-wrap:is(.position-7,.position-8,.position-9) .seat-bet {
+    left: auto !important;
+    right: calc(100% + 12px) !important;
+    transform: translateY(-100%) !important;
+  }
+  .room-shell .table-stage .seat-wrap:is(.position-4,.position-7) .seat-bet {
+    top: calc(var(--player-area-bottom) + 8px) !important;
+    transform: none !important;
+  }
+  .room-shell .table-stage .seat-wrap:is(.position-2,.position-9) .seat-bet { top: -8px !important; }
+  .room-shell .table-stage .seat-wrap:is(.position-2,.position-4) .seat-bet { left: calc(100% + 6px) !important; }
+  .room-shell .table-stage .seat-wrap:is(.position-7,.position-9) .seat-bet { right: calc(100% + 6px) !important; }
+  .room-shell .table-stage .seat-wrap:is(.position-3,.position-8) .seat-bet {
+    top: calc(var(--player-area-bottom) / 2) !important;
+    transform: translateY(-50%) !important;
+  }
+  .room-shell .table-stage .seat-wrap .dealer {
+    top: calc(var(--player-area-bottom) + 8px);
+    left: 18px; right: auto; bottom: auto;
+  }
 }
 
 @media (max-width: 760px) {
-  .room-shell .table-stage.showing-result { min-height: 830px; }
-  .room-shell .table-stage.showing-result .table-center { top: calc(44% + 16px); }
-  .room-shell .table-stage:has(.seat-bet.large-bet),
-  .room-shell .table-stage:has(.seat-wrap.large-amounts) { min-height: 820px; }
-  .room-shell .table-stage:has(.seat-bet.large-bet) .position-0 .seat-bet { top: -190px !important; }
-  .room-shell .table-stage:has(.seat-bet.large-bet) .position-1 .seat-bet {
-    top: calc(50% - 90px) !important;
-    left: calc(100% + 5px) !important;
-  }
-  .room-shell .table-stage:has(.seat-bet.large-bet) .position-8 .seat-bet {
-    top: calc(50% - 90px) !important;
-    right: calc(100% + 6px) !important;
+  .room-shell .table-stage .achievement-badges { right: 0px; }
+  /* Center the mark in the 38px exposed above the player frame. */
+  .room-shell .table-stage .hole-card-mark {
+    position: absolute;
+    top: 19px;
+    left: 50%;
+    width: 18px;
+    height: 18px;
+    transform: translate(-50%, -50%);
   }
 }

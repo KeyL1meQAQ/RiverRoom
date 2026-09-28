@@ -42,6 +42,7 @@ import { AchievementBadges, AchievementDetails } from "./Achievements";
 import { BountyCelebration, BountyRules } from "./Bounty";
 import { ShortDeckRules } from "./ShortDeck";
 import { SquidRules, SquidDetails, SquidNotice, SquidCelebration, SquidSettlementView } from "./Squid";
+import { SEAT_COUNT, desktopPositions, mobilePositions, relativeSeat } from "./table-layout";
 import { BubblePicker, InteractionLayer, ThrowPicker } from "./Interactions";
 import type { InteractionEvent } from "./Interactions";
 import "./styles.css";
@@ -532,7 +533,7 @@ function Lobby({
             <div className="section-title">
               <h2>创建牌桌</h2>
               <span>
-                <Users size={15} /> 2–9 人
+                <Users size={15} /> 2–10 人
               </span>
             </div>
             <form onSubmit={create}>
@@ -601,34 +602,6 @@ function Lobby({
     </div>
   );
 }
-
-const desktopPositions = [
-  [50, 88],
-  [20, 81],
-  [11, 51],
-  [16, 25],
-  [36, 9],
-  [64, 9],
-  [84, 25],
-  [89, 51],
-  [80, 81],
-];
-const mobilePositions = [
-  [50, 93],
-  [15, 84],
-  [15, 62],
-  [15, 35],
-  [35, 10],
-  [65, 10],
-  [85, 35],
-  [85, 62],
-  [85, 84],
-];
-// The fourth and fifth community cards need the lower seats to clear the full board.
-const mobilePositionsFullBoard = mobilePositions.map(([x, y], position) => [
-  x,
-  position === 0 ? 99 : [1, 8].includes(position) ? 90 : [2, 7].includes(position) ? 70 : y,
-]);
 
 function potTitle(group: PotResult, hand: Hand) {
   return `${hand.boards.length > 1 ? `第 ${group.board + 1} 组 · ` : ""}${group.pot ? `边池 ${group.pot}` : "主池"}${group.winners.length > 1 ? " · 平分" : ""}`;
@@ -726,7 +699,6 @@ function PokerTable({
   const activeBoard = hand?.result ? Math.max(0, (hand.boards.length || 1) - 1) : hand?.active_board || 0;
   const { boards, animated } = useBoardPresentation(hand, now, connection, sound);
   const visibleCount = boards[activeBoard]?.length || 0;
-  const mobileSeatPositions = visibleCount >= 4 ? mobilePositionsFullBoard : mobilePositions;
   const equity = room.phase === 'dealing' && !hand?.result && !hand?.runout_result?.length
     && visibleCount < 5 && hand?.runout_equity?.board === activeBoard
     ? hand.runout_equity.frames[String(visibleCount)] : undefined;
@@ -817,14 +789,14 @@ function PokerTable({
                           : "无限注德州扑克"}
         </div>
       </div>
-      {Array.from({ length: 9 }, (_, seat) => {
+      {Array.from({ length: SEAT_COUNT }, (_, seat) => {
         const handPlayer = showingHandSeats ? hand!.ids[hand!.seats.indexOf(seat)] : undefined;
         const p = handPlayer
           ? room.players.find((p) => p.id === handPlayer)
           : room.players.find((p) => p.seat === seat && !(showingHandSeats && hand!.ids.includes(p.id)));
-        const position = (seat - ownSeat + 9) % 9;
+        const position = relativeSeat(seat, ownSeat);
         const [x, y] = desktopPositions[position],
-          [mx, my] = mobileSeatPositions[position];
+          [mx, my] = mobilePositions[position];
         const actor = p && hand?.clock?.pid === p.id && !room.recovery;
         const bankMode = actor && now >= hand!.clock!.base_until;
         const seconds = actor
@@ -1010,7 +982,7 @@ function PokerTable({
       })}
       <SettlementLayer room={room} now={now} root={stageRef} baseline={motion.at} motionKey={motion.key} />
       <InteractionLayer room={room} ownSeat={ownSeat} events={interactions}
-        desktop={desktopPositions} mobile={mobileSeatPositions} />
+        desktop={desktopPositions} mobile={mobilePositions} />
     </div>
   );
 }
@@ -1426,7 +1398,7 @@ function RoomScreen({
           </span>
           <span>
             <Users size={13} />
-            {room.players.filter((p) => p.seat !== null).length}/9
+            {room.players.filter((p) => p.seat !== null).length}/10
           </span>
           <span className="desktop-only">第 {room.number} 手</span>
           {room.settings.twice && <span className="rule-tag">发两次</span>}

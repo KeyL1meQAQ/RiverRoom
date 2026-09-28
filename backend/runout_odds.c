@@ -60,7 +60,7 @@ uint32_t rr_rank7_short_deck(const int *cards) { return rank7(cards, 1); }
 typedef struct {
     const int *holes;
     int players, short_deck, remaining[52], remaining_count, cards[7];
-    uint64_t total, wins[9];
+    uint64_t total, wins[10];
 } Enumeration;
 static void visit(Enumeration *ctx) {
     uint32_t best = 0;
@@ -83,6 +83,7 @@ static void enumerate(Enumeration *ctx, int position, int begin) {
 }
 uint64_t rr_count_variant(const int *holes, int players, const int *board, int board_count,
                   const int *dead, int dead_count, int short_deck, uint64_t *wins) {
+    if (players < 2 || players > 10 || board_count < 0 || board_count > 5) return 0;
     Enumeration ctx = {.holes = holes, .players = players, .short_deck = short_deck};
     uint64_t used = 0;
     for (int i = 0; i < players * 2; ++i) used |= (uint64_t)1 << holes[i];
