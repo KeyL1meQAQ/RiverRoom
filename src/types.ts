@@ -133,7 +133,17 @@ export type Ledger = {
   by: string;
   reverses: string | null;
 };
+export type PreAction = 'call' | 'check' | 'fold' | 'check_or_fold';
+export type PreActionState = {
+  hand: number;
+  street: number;
+  revision: number;
+  selected: PreAction | null;
+  options: PreAction[];
+};
+
 export type Room = {
+  pre_action?: PreActionState | null;
   short_deck_current?: boolean;
   id: string;
   name: string;

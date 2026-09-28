@@ -32,6 +32,12 @@
   pointer-events: auto;
 }
 .room-shell .action-bar .interaction-trigger { left: 68px; }
+@media (min-width: 761px) {
+  .room-shell .action-bar .dock-log,
+  .room-shell .action-bar .interaction-trigger,
+  .room-shell .table-footnote > span:first-child { display: none; }
+  .room-shell .table-footnote > span:last-child { margin-left: auto; }
+}
 .room-shell .interaction-picker {
   position: fixed;
   bottom: calc(68px + env(safe-area-inset-bottom));

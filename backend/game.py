@@ -4,7 +4,7 @@ import time
 
 from .limits import SEAT_COUNT
 
-from . import achievements, bounty, engine, equity, hands, squid, settlement
+from . import achievements, bounty, engine, equity, hands, preactions, squid, settlement
 
 MAX_INTEGER = 9_007_199_254_740_991
 RUNOUT_STREET_PAUSE = 1.5
@@ -149,6 +149,8 @@ def post_ledger(room, p, kind, amount, now, by, reverses=None):
 
 def cashout(room, p, now, by):
     require(not in_hand(room, p['id']), '当前手牌结束后才能离座')
+    if p.get('pre_action'):
+        preactions.replace(p, None)
     held = squid.member(room, p['id']) is not None
     if p['stack'] and not held:
         post_ledger(room, p, 'buyout', p['stack'], now, by)
@@ -286,12 +288,28 @@ def deal(room, now, straddle):
 
 
 def set_clock(room, state, now):
+    """Open an opportunity; consume a valid intention before publishing a turn."""
     hand = room['hand']
+    preactions.prune(room, state)
     pid = hand['ids'][state.actor_index]
     hand['last_actions'].pop(pid, None)
     hand['action_seq'] += 1
     hand['clock'] = dict(pid=pid, base_until=now + 20, until=now + 20 + room['players'][pid]['bank'],
                          initial=room['players'][pid]['bank'])
+    player = room['players'][pid]
+    intent = player.get('pre_action')
+    # Every new opportunity invalidates requests from before this player's turn,
+    # including when no intention was saved. Other players' turns do not.
+    preactions.replace(player, None)
+    if intent and not room['recovery']:
+        action = intent['action']
+        checking = state.checking_or_calling_amount == 0
+        if action == 'check_or_fold':
+            action = 'check' if checking else 'fold'
+        if action == 'fold' and state.can_fold():
+            execute_action(room, state, pid, 'fold', {}, now)
+        elif action in ('call', 'check') and checking == (action == 'check') and state.can_check_or_call():
+            execute_action(room, state, pid, 'call', {}, now)
 
 
 def consume_bank(room, now):
@@ -309,6 +327,7 @@ def progress_hand(room, state, now):
     phase = engine.advance(hand, state, hand['allow_twice'], pause_on_board=True)
     hand['boards'] = engine.boards(state)
     room.update(phase=phase, deadline=None)
+    preactions.prune(room, state)
     hand['clock'] = None
     hand['deal'] = None
     if phase == 'dealing':
@@ -453,6 +472,8 @@ def betting_step(hand, state, name, *args):
 
 def progress_action(room, state, display, now):
     hand = room['hand']
+    # Also clear intentions when a street ends before its presentation hold.
+    preactions.prune(room, state)
     if state.actor_index is not None:
         progress_hand(room, state, now)
         return
@@ -480,8 +501,13 @@ def act(room, pid, data, now):
     if now >= hand['clock']['until']:
         raise GameError('行动已超时')
     state = engine.state_for(hand)
+    execute_action(room, state, pid, data.get('action'), data, now)
+
+
+def execute_action(room, state, pid, kind, data, now):
+    """Shared execution for a validated manual turn or a consumed intention."""
+    hand = room['hand']
     actor_index = state.actor_index
-    kind = data.get('action')
     if kind == 'fold':
         require(state.can_fold(), '当前不能弃牌')
         display = betting_step(hand, state, 'fold')
@@ -506,6 +532,27 @@ def act(room, pid, data, now):
         record_action_sound(hand, pid, 'check' if table_label == '过牌' else 'chips', now)
     log(room, f"{room['players'][pid]['name']} {label}", now)
     progress_action(room, state, display, now)
+
+
+def choose_pre_action(room, pid, data):
+    hand = room['hand']
+    player = room['players'][pid]
+    require(hand and hand['result'] is None and room['phase'] == 'betting', '当前不能预选行动')
+    state = engine.state_for(hand)
+    require(type(data.get('hand')) is int and data['hand'] == hand['number']
+            and type(data.get('street')) is int and data['street'] == state.street_index
+            and type(data.get('revision')) is int
+            and data['revision'] == player.get('pre_action_revision', 0), '预行动已更新，请按当前牌局操作')
+    require('action' in data, '请选择预行动')
+    action = data['action']
+    if action is None:
+        require(player.get('pre_action') is not None, '预行动已撤销或执行')
+        preactions.replace(player, None)
+        return
+    require(not room['recovery'], '请等待房主恢复游戏')
+    require(state.actor_index is not None and hand['ids'][state.actor_index] != pid, '已轮到你，请正常行动')
+    require(action in preactions.options(room, pid, state), '当前不能预选该行动')
+    preactions.replace(player, dict(hand=hand['number'], street=state.street_index, action=action))
 
 
 def command(room, pid, data, now):
@@ -669,6 +716,8 @@ def command(room, pid, data, now):
             resolve_runout(room, now)
     elif kind == 'act':
         act(room, pid, data, now)
+    elif kind == 'pre_action':
+        choose_pre_action(room, pid, data)
     elif kind == 'show_cards':
         hand = room['hand']
         require(hand and hand['result'] is not None and pid in hand['dealt'], '当前没有可展示的底牌')
@@ -884,4 +933,5 @@ def view(room, viewer, now):
         legal=engine.legal(state) if room['phase'] == 'betting' and state and state.actor_index is not None and hand['ids'][state.actor_index] == viewer else None)
     if viewer in room['players']:
         result['recovery_code'] = room['players'][viewer]['code']
+        result['pre_action'] = preactions.view(room, viewer, state)
     return result

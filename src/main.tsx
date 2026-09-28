@@ -37,6 +37,7 @@ import {
 import type { Config, Hand, Player, PotResult, Room } from "./types";
 import { useBoardPresentation, useSoundPreference, useActionSounds } from "./presentation";
 import { RunoutEquity } from "./RunoutEquity";
+import { PreActions } from "./PreActions";
 import { FlipNumber, SettlementLayer, settlementBalances, useMotionBaseline } from "./settlement";
 import { AchievementBadges, AchievementDetails } from "./Achievements";
 import { BountyCelebration, BountyRules } from "./Bounty";
@@ -48,6 +49,7 @@ import type { InteractionEvent } from "./Interactions";
 import "./styles.css";
 import "./poker-now-room.css";
 import "./poker-now-alignment.css";
+import "./pre-actions.css";
 
 const defaults: Config = {
   short_deck: false,
@@ -1831,17 +1833,21 @@ function RoomScreen({
               </button>
             </div>
           ) : room.recovery ? (
-            <div className="wait-actions">
-              <span>等待房主恢复游戏</span>
-              {owner && (
-                <button
-                  className="primary"
-                  onClick={() => send({ type: "resume" })}
-                >
-                  <Play size={17} />
-                  恢复游戏
-                </button>
-              )}
+            <div className="pre-action-recovery">
+              <div className="wait-actions">
+                <span>等待房主恢复游戏</span>
+                {owner && (
+                  <button
+                    className="primary"
+                    onClick={() => send({ type: "resume" })}
+                  >
+                    <Play size={17} />
+                    恢复游戏
+                  </button>
+                )}
+              </div>
+              {room.pre_action?.selected && <PreActions state={room.pre_action}
+                connected={status === 'connected'} busy={busy} send={send} />}
             </div>
           ) : room.phase === "straddle" && room.straddle === me.id ? (
             <div className="prompt-actions">
@@ -1896,7 +1902,9 @@ function RoomScreen({
                 </>
               )}
             </div>
-          ) : needsRebuy ? null : mayAct || bettingStage ? (
+          ) : needsRebuy ? null : !mayAct && room.pre_action ? (
+            <PreActions state={room.pre_action} connected={status === 'connected'} busy={busy} send={send} />
+          ) : mayAct || bettingStage ? (
             <div className={`betting-area ${!mayAct ? "betting-idle" : ""} ${raiseOpen && mayAct ? "raise-expanded" : ""}`}>
             <div className="bet-controls">
               {raiseOpen && mayAct && <div className="raise-options" role="group" aria-label="加注金额设置">

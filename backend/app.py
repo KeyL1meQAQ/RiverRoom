@@ -50,6 +50,10 @@ class Service:
             migrated = achievements.migrate(room) or migrated
             migrated = achievements.retry_pending(room) or migrated
             migrated = game.migrate_kicked_players(room) or migrated
+            hand = room['hand']
+            if any(p.get('pre_action') for p in room['players'].values()):
+                migrated = game.preactions.prune(room,
+                    game.engine.state_for(hand) if hand and hand['result'] is None else None) or migrated
             if room['closed_at']:
                 if migrated:
                     room['version'] += 1
