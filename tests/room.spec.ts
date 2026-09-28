@@ -49,7 +49,7 @@ test("multi-browser room, approval, playing, refresh and recovery", async ({
   await b.getByLabel("买入筹码").fill("200");
   await b.getByRole("button", { name: "提交入座申请" }).click();
   await expect(b.locator(".action-content")).toContainText("等待房主审批");
-  await a.getByRole("button", { name: "日志和统计", exact: true }).click();
+  await a.getByRole("button", { name: "记录", exact: true }).click();
   await a.getByRole("button", { name: "管理", exact: true }).click();
   await a.getByRole("button", { name: "批准 小满", exact: true }).click();
   await a.locator('.side-panel').getByRole('button', { name: '关闭侧栏', exact: true }).click();
@@ -76,10 +76,12 @@ test("multi-browser room, approval, playing, refresh and recovery", async ({
     path: "artifacts/room-mobile-flop.png",
     fullPage: true,
   });
-  await b.getByRole("button", { name: "房间身份", exact: true }).click();
+  await b.getByRole("button", { name: "房间菜单", exact: true }).click();
+  await b.getByRole("navigation", { name: "房间菜单" }).getByRole("button", { name: "房间身份", exact: true }).click();
   const recallCode = await b.getByLabel("我的召回码").inputValue();
   await b.getByRole("button", { name: "关闭", exact: true }).click();
-  await c.getByRole("button", { name: "房间身份", exact: true }).click();
+  await c.getByRole("button", { name: "房间菜单", exact: true }).click();
+  await c.getByRole("navigation", { name: "房间菜单" }).getByRole("button", { name: "房间身份", exact: true }).click();
   await c.getByRole("button", { name: "召回其他身份", exact: true }).click();
   await c.getByLabel("召回码", { exact: true }).fill(recallCode);
   await c.getByRole("button", { name: "召回并接管", exact: true }).click();

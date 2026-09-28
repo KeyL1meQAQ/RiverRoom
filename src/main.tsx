@@ -45,6 +45,7 @@ import { SquidRules, SquidDetails, SquidNotice, SquidCelebration, SquidSettlemen
 import { BubblePicker, InteractionLayer, ThrowPicker } from "./Interactions";
 import type { InteractionEvent } from "./Interactions";
 import "./styles.css";
+import "./poker-now-room.css";
 
 const defaults: Config = {
   short_deck: false,
@@ -75,26 +76,30 @@ const commandId = () =>
     b.toString(16).padStart(2, "0"),
   ).join("");
 
-function SeatAmounts({ stack, now, motionKey, pid }: { stack: number; now: number; motionKey: string; pid: string }) {
+function SeatAmounts({ stack, won, now, motionKey, pid }: { stack: number; won: number; now: number; motionKey: string; pid: string }) {
   const rowRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const row = rowRef.current!;
     const amount = row.querySelector<HTMLElement>('.stack')!;
     const fit = () => {
-      const size = window.matchMedia('(max-width: 760px)').matches ? 12 : 14;
+      const size = window.matchMedia('(max-width: 760px)').matches ? 17 : 20;
       amount.style.fontSize = `${size}px`;
-      const width = amount.getBoundingClientRect().width;
-      if (width > row.clientWidth && row.clientWidth > 0) amount.style.fontSize = `${size * row.clientWidth / width}px`;
+      const width = Math.max(amount.getBoundingClientRect().width, amount.scrollWidth);
+      const payout = row.querySelector<HTMLElement>('.seat-payout');
+      const available = getComputedStyle(row).display === 'grid' ? row.clientWidth :
+        row.clientWidth - (payout ? payout.offsetWidth + 4 : 0);
+      if (width > available && available > 0) amount.style.fontSize = `${Math.max(10, size * available / width)}px`;
     };
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(row);
     return () => observer.disconnect();
-  }, [stack]);
+  }, [stack, won]);
   return <div className="seat-stack-row" ref={rowRef}>
     <strong className="stack" title={n(stack)} data-chip-target={pid}>
       <FlipNumber value={stack} now={now} motionKey={motionKey} />
     </strong>
+    {won > 0 && <span className="seat-payout" aria-label={`获胜数额 ${n(won)}`} title={`获胜数额 +${n(won)}`}>+{n(won)}</span>}
   </div>;
 }
 const phases: Record<string, string> = {
@@ -799,6 +804,7 @@ function PokerTable({
         const allLabels = labels?.length ? labels : ownLabels;
         const displayedLabels = allLabels[activeBoard] ? [allLabels[activeBoard]] : [];
         const shownStack = p ? balances[p.id] ?? p.stack : 0;
+        const won = p && showingResult && !settling ? hand?.result?.find(result => result.pid === p.id)?.won || 0 : 0;
         const mainWinner = p && (hand?.uncontested_winner === p.id || mainGroups.some(group => group.winners.some(w => w.pid === p.id)));
         const winningHoles = new Set(mainGroups.flatMap(group => group.winners.filter(w => w.pid === p?.id).flatMap(w => w.cards)));
         const status = p && showingResult && p.seat === null
@@ -824,7 +830,7 @@ function PokerTable({
         return (
           <div
             key={seat}
-            className={`seat-wrap position-${position} ${p?.id === room.me ? "own-seat" : ""} ${displayedLabels.length ? "has-result" : ""} ${displayedLabels.length > 1 ? "double-result" : ""} ${p && n(shownStack).length > 7 ? "large-amounts" : ""}`}
+            className={`seat-wrap position-${position} ${p?.id === room.me ? "own-seat" : ""} ${displayedLabels.length ? "has-result" : ""} ${displayedLabels.length > 1 ? "double-result" : ""} ${p && (n(shownStack).length > 7 || n(won).length > 7) ? "large-amounts" : ""}`}
             style={
               {
                 "--x": `${x}%`,
@@ -849,7 +855,8 @@ function PokerTable({
                   {allIn ? <span className="seat-state all-in" title={status}>全下</span>
                     : compactStatus && compactStatus !== "你" && compactStatus !== "离线" && <span className="seat-state" title={status}>{compactStatus}</span>}
                 </div>
-                <SeatAmounts stack={shownStack} now={now} pid={p.id} motionKey={`${motion.key}:${p.id}`} />
+                <SeatAmounts stack={shownStack} won={won}
+                  now={now} pid={p.id} motionKey={`${motion.key}:${p.id}`} />
                 {displayedLabels.length > 0 && <div
                   className={`seat-hand-label ${p.id === room.me ? "own-hand-label" : "public-hand-label"}`}
                   aria-label={p.id === room.me ? "本人成牌" : `${p.name}的摊牌牌型`}>
@@ -896,8 +903,7 @@ function PokerTable({
               <div className={`seat-bet ${betAmount > 0 ? 'with-amount' : 'action-only'} ${tableAction === '弃牌' ? 'fold-action' : ''} ${n(betAmount).length > 5 ? 'large-bet' : ''}`}
                 aria-label={`${p.name} ${tableAction || '下注'}${betAmount > 0 ? ` ${n(betAmount)}` : ''}`}
                 title={betAmount > 0 ? `${tableAction || '下注'} ${n(betAmount)}` : tableAction}>
-                {betAmount > 0 ? <span className="bet-chip" aria-hidden="true" />
-                  : tableAction && <span className="bet-action">{tableAction}</span>}
+                {betAmount === 0 && tableAction && <span className="bet-action">{tableAction}</span>}
                 {betAmount > 0 && <strong className="bet-amount"
                   style={{ '--amount-length': n(betAmount).length } as React.CSSProperties}>
                   {seatAmount(betAmount)}
@@ -999,6 +1005,8 @@ function RoomScreen({
   const [nickname, setNickname] = useState("");
   const [amount, setAmount] = useState(200);
   const [raise, setRaise] = useState(4);
+  const [raiseOpen, setRaiseOpen] = useState(false);
+  const [roomMenuOpen, setRoomMenuOpen] = useState(false);
   const [code, setCode] = useState("");
   const [config, setConfig] = useState(defaults);
   const [targetSnapshot, setTarget] = useState<Player | null>(null);
@@ -1104,6 +1112,7 @@ function RoomScreen({
   }, [rid, epoch]);
   useEffect(() => {
     if (room?.legal?.min_raise) setRaise(room.legal.min_raise);
+    setRaiseOpen(false);
   }, [room?.hand?.seq, room?.hand?.number]);
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -1233,14 +1242,16 @@ function RoomScreen({
     setAmount(room.settings.bb * 100);
     setModal("topup");
   };
-  const wager = (action: string, value?: number) =>
-    send({
+  const wager = async (action: string, value?: number) => {
+    const sent = await send({
       type: "act",
       action,
       amount: value,
       hand: hand?.number,
       seq: hand?.seq,
     });
+    if (sent) setRaiseOpen(false);
+  };
   const stats = room.players.filter(
     (p) => p.buyin || p.buyout || p.seat !== null,
   );
@@ -1284,8 +1295,8 @@ function RoomScreen({
     <div className="room-shell">
       <header className="site-header room-header">
         <div className="header-left">
-          <IconButton title="返回首页" onClick={home}>
-            <ArrowLeft size={18} />
+          <IconButton title="房间菜单" className="room-menu-trigger" onClick={() => setRoomMenuOpen(value => !value)}>
+            <Menu size={21} />
           </IconButton>
           <div className="brand">
             <Spade size={21} fill="currentColor" />
@@ -1293,6 +1304,15 @@ function RoomScreen({
           </div>
         </div>
         <div className="header-right">
+          {me.seat !== null && !room.closed_at && <>
+            <IconButton title="离座" disabled={me.leave || busy} onClick={() => setModal("leave")}>
+              <LogOut size={21} />
+            </IconButton>
+            <IconButton title={me.away ? "回到游戏" : "离开"} disabled={busy}
+              onClick={() => void send({ type: "away", value: !me.away })}>
+              {me.away ? <Play size={21} /> : <Pause size={21} />}
+            </IconButton>
+          </>}
           {owner && pendingApprovals > 0 && <IconButton title={`待审批 ${pendingApprovals} 项`}
             className="approval-button" onClick={() => { setPanel("manage"); setDrawer(true); }}>
             <ShieldCheck size={18} /><span className="approval-count">{pendingApprovals}</span>
@@ -1317,25 +1337,22 @@ function RoomScreen({
                   : "重连中"}
             </span>
           </span>
-          <button
-            className="share-button"
-            aria-label="邀请朋友"
-            title="邀请朋友"
-            onClick={() => setModal("share")}
-          >
-            <Link size={16} />
-            <span>邀请朋友</span>
-          </button>
-          <IconButton title="房间身份" onClick={() => setModal("identity")}>
-            <KeyRound size={19} />
-          </IconButton>
-          <IconButton
-            title="日志和统计"
-            onClick={() => setDrawer(true)}
-          >
-            <Menu size={20} />
-          </IconButton>
         </div>
+        {roomMenuOpen && <>
+          <button className="room-menu-backdrop" aria-label="关闭房间菜单" onClick={() => setRoomMenuOpen(false)} />
+          <nav className="room-menu" aria-label="房间菜单">
+            <span className="room-menu-heading">{room.name}</span>
+            <button onClick={() => { setModal("share"); setRoomMenuOpen(false); }}><Link size={17} />邀请朋友</button>
+            <button onClick={() => { setModal("identity"); setRoomMenuOpen(false); }}><KeyRound size={17} />房间身份</button>
+            {me.seat !== null && !room.closed_at && <button disabled={!!awaiting || busy} onClick={() => { openTopup(); setRoomMenuOpen(false); }}><Coins size={17} />补码</button>}
+            {panelTabs.map(tab => <button key={tab.id} onClick={() => { setPanel(tab.id as typeof panel); setDrawer(true); setRoomMenuOpen(false); }}>
+              <tab.icon size={17} />{tab.label}{tab.id === "manage" && pendingApprovals > 0 && <b className="menu-approval-count">{pendingApprovals}</b>}
+            </button>)}
+            {owner && <button onClick={() => { setConfig(room.settings); setModal("settings"); setRoomMenuOpen(false); }}><Settings size={17} />房间设置</button>}
+            <button onClick={() => { toggleInteractions(); setRoomMenuOpen(false); }}>{hideInteractions ? <Eye size={17} /> : <EyeOff size={17} />}{hideInteractions ? "显示互动" : "隐藏互动"}</button>
+            <button onClick={home}><ArrowLeft size={17} />返回首页</button>
+          </nav>
+        </>}
       </header>
       <div className="room-info">
         <div>
@@ -1777,6 +1794,7 @@ function RoomScreen({
         </aside>
       </main>
       <footer className="action-bar">
+        <button className="dock-log" onClick={() => { setPanel("log"); setDrawer(true); }}><History size={17} />记录</button>
         {me.seat !== null && !room.closed_at && <IconButton title="发送气泡"
           className={`interaction-trigger ${bubbleOpen ? "active" : ""}`}
           disabled={status !== "connected"}
@@ -1796,31 +1814,6 @@ function RoomScreen({
                 : `筹码 ${n(presentationBalances[me.id] ?? me.stack)} · BANK ${Math.ceil(me.bank)}s`}
             </span>
           </div>
-          {me.seat !== null && (
-            <div className="seat-tools">
-              <IconButton
-                title={me.away ? "回到游戏" : "离开"}
-                disabled={!!room.closed_at || busy}
-                onClick={() => send({ type: "away", value: !me.away })}
-              >
-                {me.away ? <Play size={18} /> : <Pause size={18} />}
-              </IconButton>
-              <IconButton
-                title="补码"
-                disabled={!!awaiting || !!room.closed_at || busy}
-                onClick={openTopup}
-              >
-                <Coins size={18} />
-              </IconButton>
-              <IconButton
-                title="离座"
-                disabled={me.leave || !!room.closed_at || busy}
-                onClick={() => setModal("leave")}
-              >
-                <LogOut size={18} />
-              </IconButton>
-            </div>
-          )}
         </div>
         <div className="action-content">
           {room.closed_at ? (
@@ -1919,9 +1912,9 @@ function RoomScreen({
               </button>
             </div>
           ) : mayAct || bettingStage ? (
-            <div className={`betting-area ${!mayAct ? "betting-idle" : ""}`}>
+            <div className={`betting-area ${!mayAct ? "betting-idle" : ""} ${raiseOpen && mayAct ? "raise-expanded" : ""}`}>
             <div className="bet-controls">
-              <div className="raise-options">
+              {raiseOpen && mayAct && <div className="raise-options" role="group" aria-label="加注金额设置">
                 <div className="quick-bets">
                   {[0.5, 0.75, 1].map((f) => (
                     <button
@@ -1974,9 +1967,9 @@ function RoomScreen({
                   value={raise}
                   onChange={(e) => setRaise(Number(e.target.value))}
                 />
-              </div>
+              </div>}
               <div className="bet-buttons">
-                <button
+                {!raiseOpen || !mayAct ? <><button
                   className="fold-button"
                   disabled={busy || !mayAct || !legal.fold}
                   onClick={() => wager("fold")}
@@ -1990,22 +1983,17 @@ function RoomScreen({
                 >
                   {legal.call ? `跟注 ${n(legal.call)}` : "过牌"}
                 </button>
-                <button
-                  className="primary"
-                  disabled={
-                    !canRaise ||
-                    raise < (legal.min_raise || 0) ||
-                    raise > (legal.max_raise || 0)
-                  }
-                  onClick={() => wager("raise", raise)}
-                >
-                  {raise === legal.max_raise
-                    ? "全下"
-                    : me.bet || legal.call
-                      ? "加注到"
-                      : "下注"}{" "}
-                  {n(raise)}
-                </button>
+                <button className="raise-trigger" disabled={!canRaise}
+                  aria-expanded={false} onClick={() => setRaiseOpen(true)}>
+                  {me.bet || legal.call ? "加注" : "下注"}
+                </button></> : <>
+                  <button className="fold-button" onClick={() => setRaiseOpen(false)}>取消</button>
+                  <button className="primary raise-confirm"
+                    disabled={!canRaise || raise < (legal.min_raise || 0) || raise > (legal.max_raise || 0)}
+                    onClick={() => void wager("raise", raise)}>
+                    确认{raise === legal.max_raise ? "全下" : me.bet || legal.call ? "加注到" : "下注"} {n(raise)}
+                  </button>
+                </>}
               </div>
             </div>
             {!mayAct && <div className="wait-actions">

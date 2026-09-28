@@ -127,7 +127,7 @@ test('real two-browser hand awards a squid and settles without an extra buyin', 
     await b.getByLabel('昵称', { exact: true }).fill('客人');
     await b.getByLabel('买入筹码', { exact: true }).fill('100');
     await b.getByRole('button', { name: '提交入座申请' }).click();
-    await a.getByRole('button', { name: '日志和统计', exact: true }).click();
+    await a.getByRole('button', { name: '记录', exact: true }).click();
     await a.getByRole('button', { name: '管理', exact: true }).click();
     await a.getByRole('button', { name: '批准 客人', exact: true }).click();
     await a.locator('.side-panel').getByRole('button', { name: '关闭侧栏', exact: true }).click();

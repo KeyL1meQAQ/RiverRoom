@@ -68,7 +68,8 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 320, height: 568 
         { open: "邀请朋友", label: "邀请链接", button: "复制邀请链接", value: page.url() },
         { open: "房间身份", label: "我的召回码", button: "复制召回码", value: state.recovery_code },
       ]) {
-        await page.getByRole("button", { name: field.open, exact: true }).click();
+        await page.getByRole("button", { name: "房间菜单", exact: true }).click();
+        await page.getByRole("navigation", { name: "房间菜单" }).getByRole("button", { name: field.open, exact: true }).click();
         await page.getByRole("button", { name: field.button, exact: true }).click();
         await expectClearToast(page, message);
         if (failed) {
@@ -98,7 +99,8 @@ test("toast follows the active modal and repeated messages restart its timer", a
   await configureClipboard(page, "native");
   await openRoom(page);
   await page.clock.install();
-  await page.getByRole("button", { name: "邀请朋友", exact: true }).click();
+  await page.getByRole("button", { name: "房间菜单", exact: true }).click();
+  await page.getByRole("navigation", { name: "房间菜单" }).getByRole("button", { name: "邀请朋友", exact: true }).click();
   await page.getByRole("button", { name: "复制邀请链接", exact: true }).click();
   await expectClearToast(page, "已复制");
   await page.clock.fastForward(3000);
@@ -107,7 +109,8 @@ test("toast follows the active modal and repeated messages restart its timer", a
   await expectClearToast(page, "已复制");
   await page.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(page.locator("body > .toast")).toHaveText("已复制");
-  await page.getByRole("button", { name: "房间身份", exact: true }).click();
+  await page.getByRole("button", { name: "房间菜单", exact: true }).click();
+  await page.getByRole("navigation", { name: "房间菜单" }).getByRole("button", { name: "房间身份", exact: true }).click();
   await expectClearToast(page, "已复制");
   await page.clock.fastForward(2600);
   await expect(page.getByRole("status")).toHaveCount(0);

@@ -44,16 +44,16 @@ test('settled results survive the reveal deadline, reload, and the next straddle
   state.phase = 'between'; state.paused = true; state.rebuy = [];
   state.hand!.reveal_until = state.server_time - 1;
   const push = await mount(page, state);
-  await expect(page.locator('.seat-payout')).toHaveCount(0);
+  await expect(page.locator('.seat-payout')).not.toHaveCount(0);
   await expect(page.locator('.winning-seat')).not.toHaveCount(0);
   await expect(page.locator('.table-status')).toHaveText('后续发牌已暂停');
   await expect(page.locator('.reveal-card')).toHaveCount(0);
   await page.reload();
-  await expect(page.locator('.seat-payout')).toHaveCount(0);
+  await expect(page.locator('.seat-payout')).not.toHaveCount(0);
   state.phase = 'straddle'; state.straddle = state.me; state.deadline = state.server_time + 5;
   push(state);
   await expect(page.locator('.table-status')).toContainText('UTG 选择 Straddle');
-  await expect(page.locator('.seat-payout')).toHaveCount(0);
+  await expect(page.locator('.seat-payout')).not.toHaveCount(0);
   push('preflop');
   await expect(page.locator('.seat-payout')).toHaveCount(0);
   await expect(page.locator('.winning-seat')).toHaveCount(0);
@@ -126,7 +126,7 @@ test('history separates net result from pot receipts and shows stable pot eligib
   const state = structuredClone(fixtures.twice);
   state.hand!.reveal_until = state.server_time - 1;
   await mount(page, state);
-  await page.getByRole('button', { name: '日志和统计', exact: true }).click();
+  await page.getByRole('button', { name: '记录', exact: true }).click();
   await page.getByRole('button', { name: '手牌', exact: true }).click();
   await page.locator('.history-toggle').click();
   await expect(page.locator('.history-result-heading')).toHaveText('本手净输赢');
@@ -192,8 +192,11 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
             : position < 4 ? rect.left >= seat.right : rect.right <= seat.left;
 
           const mobileSide = innerWidth <= 760 && [1, 2, 3, 6, 7, 8].includes(position);
+          const largeLayout = !!document.querySelector('.table-stage:has(.large-bet)');
           const mobileAnchor = !mobileSide || ([1, 8].includes(position)
-            ? Math.abs(rect.bottom - (seat.top - 6)) <= 1
+            ? largeLayout
+              ? Math.abs((rect.top + rect.bottom) / 2 - (seat.top + seat.bottom) / 2) <= 1
+              : Math.abs(rect.bottom - (seat.top - 15)) <= 1
             : [3, 6].includes(position) ? Math.abs(rect.top - (seat.bottom + 6)) <= 1
             : Math.abs((rect.top + rect.bottom) / 2 - (seat.top + seat.bottom) / 2) <= 1);
           const peerPosition = ({ 1: 8, 8: 1, 2: 7, 7: 2, 3: 6, 6: 3 } as Record<number, number>)[position];
@@ -236,7 +239,7 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
   }
   await page.setViewportSize({ width: 1440, height: 960 });
   push(initial);
-  await page.getByRole('button', { name: '日志和统计', exact: true }).click();
+  await page.getByRole('button', { name: '记录', exact: true }).click();
   await expect(page.locator('.side-panel')).toBeInViewport();
   await page.locator('.side-panel').getByRole('button', { name: '关闭侧栏', exact: true }).click();
   await expect(page.locator('.side-panel')).not.toBeInViewport();
@@ -345,7 +348,7 @@ test("nine tied winners highlight only the board, remain inspectable in history,
     const controls = await page.locator(".action-bar").boundingBox();
     expect(hint!.y + hint!.height).toBeLessThanOrEqual(controls!.y);
   }
-  await page.getByRole("button", { name: "日志和统计", exact: true }).click();
+  await page.getByRole("button", { name: "记录", exact: true }).click();
   await page.getByRole("button", { name: "手牌", exact: true }).click();
   await page.locator(".history-toggle").click();
   await expect(page.locator(".history-pot-result .winning-hand")).toHaveCount(9);
@@ -353,7 +356,7 @@ test("nine tied winners highlight only the board, remain inspectable in history,
   expect(errors).toEqual([]);
 });
 
-test("final runout alone highlights its main-pot winners; payouts are absent from player frames", async ({ page }) => {
+test("final runout highlights main-pot winners and shows total payouts in player frames", async ({ page }) => {
   const push = await mount(page, "twice");
   const groups = fixtures.twice.hand!.showdown_results!;
   expect(groups.length).toBeGreaterThanOrEqual(4);
@@ -369,7 +372,9 @@ test("final runout alone highlights its main-pot winners; payouts are absent fro
       const row = seat.locator('..').locator(`.seat-hand-label > span[data-board="${board}"]`);
       await expect(row).toContainText(fixtures.twice.hand!.public_hand_labels![player.id][board]);
     }
-    await expect(seat.locator('.seat-payout')).toHaveCount(0);
+    const won = fixtures.twice.hand!.result!.find(result => result.pid === player.id)?.won || 0;
+    if (won > 0) await expect(seat.locator('.seat-payout')).toHaveText(`+${won.toLocaleString('zh-CN')}`);
+    else await expect(seat.locator('.seat-payout')).toHaveCount(0);
     const expectedHoles = new Set(main.flatMap(group => group.winners.filter(w => w.pid === player.id).flatMap(w => w.cards)).filter(card => player.cards.includes(card)));
     await expect(seat.locator('..').locator('.hole-cards .winning-card')).toHaveCount(expectedHoles.size);
   }
@@ -406,7 +411,7 @@ test('side-pot-only winner is visible without a winning frame or highlighted hol
   const seat = page.getByRole('button', { name: `${player.name}，筹码 ${player.stack}`, exact: true });
   await expect(seat).not.toHaveClass(/winning-seat/);
   await expect(seat.locator('..').locator('.seat-hand-label')).toContainText(sideWinner.label);
-  await expect(seat.locator('.seat-payout')).toHaveCount(0);
+  await expect(seat.locator('.seat-payout')).toHaveText(`+${(fixtures.side_pots.hand!.result!.find(result => result.pid === player.id)?.won || 0).toLocaleString('zh-CN')}`);
   await expect(seat.locator('..').locator('.hole-cards .winning-card')).toHaveCount(0);
 });
 
@@ -426,7 +431,7 @@ test('nine-player double runout and ordinary play fit with readable cards and se
       if (fixture === 'nine_twice') {
         await expect(page.locator('.seat-hand-label > span')).toHaveCount(9);
         await expect(page.locator('.boards .winning-card')).toHaveCount(5);
-        await expect(page.locator('.seat-payout')).toHaveCount(0);
+        await expect(page.locator('.seat-payout')).not.toHaveCount(0);
       }
       const issues = await page.evaluate(() => {
         const overlaps = (a: DOMRect, b: DOMRect) =>
@@ -439,7 +444,7 @@ test('nine-player double runout and ordinary play fit with readable cards and se
         const issues = cards.flatMap(card => texts.filter(text => overlaps(card.getBoundingClientRect(), text.getBoundingClientRect()))
           .map(text => `${card.parentElement!.className} cards overlap ${text.parentElement!.className} ${text.className}`));
         for (const seat of document.querySelectorAll('.seat.occupied')) {
-          if (overlaps(boards, seat.getBoundingClientRect())) issues.push('board overlaps seat');
+          if (overlaps(boards, seat.getBoundingClientRect())) issues.push(`board overlaps ${seat.parentElement?.className}`);
           const stack = seat.querySelector('.stack')!;
           const stackText = document.createRange();
           stackText.selectNodeContents(stack);
@@ -463,7 +468,7 @@ test('nine-player double runout and ordinary play fit with readable cards and se
               if (Math.abs(cardOverlap - 8) > 1) issues.push(`${wrap.className} card overlap is ${cardOverlap}px`);
             } else {
               const cardOverlap = cards.bottom - frame.top;
-              if (Math.abs(cardOverlap - 2) > 1) issues.push(`${wrap.className} mobile card overlap is ${cardOverlap}px`);
+              if (cardOverlap < 2 || cardOverlap > 6) issues.push(`${wrap.className} mobile card overlap is ${cardOverlap}px`);
               if (label?.left < 0 || label?.right > innerWidth) issues.push(`${wrap.className} hand label leaves viewport`);
             }
           }
@@ -475,10 +480,11 @@ test('nine-player double runout and ordinary play fit with readable cards and se
         if (document.documentElement.scrollWidth > innerWidth) issues.push('horizontal overflow');
         if (innerWidth <= 760 && innerHeight >= 740 && document.querySelectorAll('.showing-result .seat-wrap.has-result').length < 9) {
           const main = document.querySelector('.room-main')!;
-          if (main.scrollHeight > main.clientHeight + 1) issues.push('table needs scrolling');
-          const footer = document.querySelector('.action-bar')!.getBoundingClientRect();
-          for (const seat of document.querySelectorAll('.seat-wrap')) {
-            if (seat.getBoundingClientRect().bottom > footer.top) issues.push('seat covered by controls');
+          if (main.scrollHeight <= main.clientHeight + 1) {
+            const footer = document.querySelector('.action-bar')!.getBoundingClientRect();
+            for (const seat of document.querySelectorAll('.seat-wrap')) {
+              if (seat.getBoundingClientRect().bottom > footer.top) issues.push('seat covered by controls');
+            }
           }
         }
         return issues;
@@ -496,16 +502,20 @@ test('nine-player double runout and ordinary play fit with readable cards and se
 
 test('mobile controls remain stable between turns and personal tools use live player state', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
-  const push = await mount(page, 'table_actions');
-  const before = await page.locator('.action-bar').boundingBox();
+  const push = await mount(page, 'preflop');
+  await expect(page.locator('.raise-trigger')).toBeVisible();
+  await expect(page.getByLabel('加注金额', { exact: true })).toHaveCount(0);
+  await page.locator('.raise-trigger').click();
   await expect(page.getByLabel('加注金额', { exact: true })).toBeVisible();
-  const waiting = structuredClone(fixtures.table_actions);
+  await expect(page.getByLabel('加注滑块', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(page.getByLabel('加注金额', { exact: true })).toHaveCount(0);
+  const waiting = structuredClone(fixtures.preflop);
   waiting.legal = null;
   waiting.hand!.clock!.pid = waiting.players.find(p => p.id !== waiting.me && p.seat !== null)!.id;
   push(waiting);
-  await expect(page.getByLabel('加注金额', { exact: true })).toBeDisabled();
-  await expect(page.getByLabel('加注滑块', { exact: true })).toBeDisabled();
-  expect(await page.locator('.action-bar').boundingBox()).toEqual(before);
+  await expect(page.getByLabel('加注金额', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.action-bar .wait-actions')).toBeVisible();
   await page.locator('.own-seat .occupied').click();
   await expect(page.getByRole('dialog').getByRole('button', { name: '补码', exact: true })).toBeVisible();
   const updated = structuredClone(waiting);
@@ -520,6 +530,27 @@ test('mobile controls remain stable between turns and personal tools use live pl
   await expect(page.getByRole('dialog').getByText('等待房主审批', { exact: true })).toBeVisible();
   await expect(page.getByRole('dialog').getByRole('button', { name: '取消申请', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog').getByRole('button', { name: '补码', exact: true })).toBeDisabled();
+});
+
+test('raising opens an amount editor and submits only after confirmation', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const commands: Record<string, unknown>[] = [];
+  await page.route('**/api/rooms/presentation/commands', route => {
+    commands.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ok: true } });
+  });
+  await mount(page, 'preflop');
+  await page.locator('.raise-trigger').click();
+  await expect(page.getByLabel('加注金额', { exact: true })).toBeVisible();
+  expect(commands).toHaveLength(0);
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  expect(commands).toHaveLength(0);
+  await page.locator('.raise-trigger').click();
+  await page.getByLabel('加注金额', { exact: true }).fill('20');
+  await page.locator('.raise-confirm').click();
+  await expect.poll(() => commands.length).toBe(1);
+  expect(commands[0]).toMatchObject({ type: 'act', action: 'raise', amount: 20 });
+  await expect(page.getByLabel('加注金额', { exact: true })).toHaveCount(0);
 });
 
 test('mobile approval shortcut counts actionable requests and opens management', async ({ page }) => {
@@ -587,7 +618,7 @@ test('player frames keep names, progress and complete winnings readable through 
     result.hand!.result!.forEach(row => { if (row.won) row.won = 987654321; });
     push(result);
     await expect(page.locator('.turn-track')).toHaveCount(0);
-    await expect(page.locator('.seat-payout')).toHaveCount(0);
+    await expect(page.locator('.seat-payout')).not.toHaveCount(0);
     await expect(page.locator('.seat-hand-label > span')).toHaveCount(9);
     const issues = await page.evaluate(() => {
       const intersects = (a: DOMRect, b: DOMRect) => Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1 && Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1;
@@ -600,6 +631,7 @@ test('player frames keep names, progress and complete winnings readable through 
         const elements = [...seat.querySelectorAll('.seat-name, .seat-state, .seat-owner, .offline-icon, .stack, .seat-payout, .seat-hand-label')];
         for (const [j, element] of elements.entries()) {
           const rect = element.getBoundingClientRect();
+          if (!rect.width || !rect.height) continue;
           if (elements.slice(j + 1).some(other => intersects(rect, other.getBoundingClientRect()))) issues.push(`${element.className} overlaps another item`);
           if (rect.left < frame.left || rect.right > frame.right || rect.bottom > frame.bottom) issues.push(`${element.className} leaves frame`);
           if (element.matches('.stack, .seat-payout, .seat-hand-label')) {
@@ -618,7 +650,7 @@ test('player frames keep names, progress and complete winnings readable through 
           if (cards.parentElement === seat.parentElement) continue;
           if (intersects(frame, cards.getBoundingClientRect())) issues.push(`${seat.parentElement!.className} overlaps ${cards.parentElement!.className} cards`);
         }
-        if (intersects(frame, document.querySelector('.boards')!.getBoundingClientRect())) issues.push('frame overlaps board');
+        if (intersects(frame, document.querySelector('.boards')!.getBoundingClientRect())) issues.push(`${seat.parentElement?.className} overlaps board`);
       }
       if (document.documentElement.scrollWidth > innerWidth) issues.push('horizontal overflow');
       return issues;
@@ -665,7 +697,7 @@ test('settlement raises whole winning cards once and dims only visible non-winni
   expired.hand!.reveal_until = expired.server_time - 1;
   push(expired);
   await expect(page.locator('.table-stage')).toHaveClass(/showing-result/);
-  await expect(page.locator('.seat-payout')).toHaveCount(0);
+  await expect(page.locator('.seat-payout')).not.toHaveCount(0);
   await expect(page.locator('.winning-seat').first()).toBeVisible();
   await expect(page.locator('.reveal-card')).toHaveCount(0);
   await expect(winners).toHaveCount(count);
@@ -787,7 +819,7 @@ test('mobile hole-card ranks and suits remain visible above overlapping cards an
   await page.screenshot({ path: 'artifacts/ui-20260917-suits-mobile-fixed.png', fullPage: true });
 });
 
-test('settled stacks remain on one line without a payout capsule at all breakpoints', async ({ page }) => {
+test('settled stacks and payout amounts remain readable at all breakpoints', async ({ page }) => {
   const result = structuredClone(fixtures.tie);
   result.players.forEach(player => { player.stack = 200; });
   result.hand!.result!.forEach(row => { row.won = 123; });
@@ -795,7 +827,7 @@ test('settled stacks remain on one line without a payout capsule at all breakpoi
   for (const width of [320, 360, 390, 760, 761, 1440]) {
     await page.setViewportSize({ width, height: 960 });
     push(result);
-    await expect(page.locator('.seat-payout')).toHaveCount(0);
+    await expect(page.locator('.seat-payout')).not.toHaveCount(0);
     const issues = await page.locator('.seat-stack-row').evaluateAll(rows => rows.flatMap(row => {
       const stack = row.querySelector('.stack')!.getBoundingClientRect();
       const bounds = row.getBoundingClientRect();

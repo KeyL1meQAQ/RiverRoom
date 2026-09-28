@@ -65,6 +65,7 @@ test('pot splits by recipient, lands before balances flip, then opens the full r
   await page.clock.runFor(500);
   await expect(page.locator('.reveal-countdown')).toContainText('5s');
   await expect(page.locator('.pot-capsule')).toHaveCount(0);
+  await expect(page.locator('.seat-payout')).toHaveCount(events.length);
   expect(errors).toEqual([]);
 });
 
