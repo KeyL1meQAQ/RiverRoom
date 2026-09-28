@@ -43,7 +43,7 @@ test("multi-browser room, approval, playing, refresh and recovery", async ({
 
   await b.goto(url);
   await expect(b.locator(".connection")).toHaveClass(/connected/);
-  await expect(b.locator(".my-status")).toContainText("观战中");
+  await expect(b.locator(".my-status")).toHaveCount(0);
   await b.getByRole("button", { name: "入座 5 号位", exact: true }).click();
   await b.getByLabel("昵称", { exact: true }).fill("小满");
   await b.getByLabel("买入筹码").fill("200");
@@ -64,7 +64,7 @@ test("multi-browser room, approval, playing, refresh and recovery", async ({
   await b.screenshot({ path: "artifacts/room-mobile.png", fullPage: true });
   await b.reload();
   await expect(b.locator(".connection")).toHaveClass(/connected/);
-  await expect(b.locator(".my-status")).toContainText("小满");
+  await expect(b.locator(".own-seat .seat-name")).toHaveText("小满");
   await expect(b.locator(".occupied")).toHaveCount(2);
   await a.getByRole("button", { name: "跟注 1", exact: true }).click();
   await expect(b.locator(".bet-buttons")).toBeVisible();
@@ -85,7 +85,7 @@ test("multi-browser room, approval, playing, refresh and recovery", async ({
   await c.getByRole("button", { name: "召回其他身份", exact: true }).click();
   await c.getByLabel("召回码", { exact: true }).fill(recallCode);
   await c.getByRole("button", { name: "召回并接管", exact: true }).click();
-  await expect(c.locator(".my-status")).toContainText("小满");
+  await expect(c.locator(".own-seat .seat-name")).toHaveText("小满");
   await expect(b.locator(".connection-banner")).toContainText(
     "身份已在另一设备召回",
   );

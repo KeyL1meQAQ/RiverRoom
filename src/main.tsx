@@ -46,6 +46,7 @@ import { BubblePicker, InteractionLayer, ThrowPicker } from "./Interactions";
 import type { InteractionEvent } from "./Interactions";
 import "./styles.css";
 import "./poker-now-room.css";
+import "./poker-now-alignment.css";
 
 const defaults: Config = {
   short_deck: false,
@@ -76,30 +77,27 @@ const commandId = () =>
     b.toString(16).padStart(2, "0"),
   ).join("");
 
-function SeatAmounts({ stack, won, now, motionKey, pid }: { stack: number; won: number; now: number; motionKey: string; pid: string }) {
+function SeatAmounts({ stack, now, motionKey, pid }: { stack: number; now: number; motionKey: string; pid: string }) {
   const rowRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const row = rowRef.current!;
     const amount = row.querySelector<HTMLElement>('.stack')!;
     const fit = () => {
-      const size = window.matchMedia('(max-width: 760px)').matches ? 17 : 20;
+      const size = window.matchMedia('(max-width: 760px)').matches ? 15 : 18;
       amount.style.fontSize = `${size}px`;
       const width = Math.max(amount.getBoundingClientRect().width, amount.scrollWidth);
-      const payout = row.querySelector<HTMLElement>('.seat-payout');
-      const available = getComputedStyle(row).display === 'grid' ? row.clientWidth :
-        row.clientWidth - (payout ? payout.offsetWidth + 4 : 0);
+      const available = row.clientWidth;
       if (width > available && available > 0) amount.style.fontSize = `${Math.max(10, size * available / width)}px`;
     };
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(row);
     return () => observer.disconnect();
-  }, [stack, won]);
+  }, [stack]);
   return <div className="seat-stack-row" ref={rowRef}>
     <strong className="stack" title={n(stack)} data-chip-target={pid}>
       <FlipNumber value={stack} now={now} motionKey={motionKey} />
     </strong>
-    {won > 0 && <span className="seat-payout" aria-label={`获胜数额 ${n(won)}`} title={`获胜数额 +${n(won)}`}>+{n(won)}</span>}
   </div>;
 }
 const phases: Record<string, string> = {
@@ -171,9 +169,10 @@ function Modal({
 }: {
   title: string;
   children: React.ReactNode;
-  close: () => void;
+  close?: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const headingId = useId();
   const setToastHost = useContext(ToastHostContext);
   useEffect(() => {
     const dialog = ref.current!;
@@ -189,20 +188,58 @@ function Modal({
   return (
     <dialog
       ref={ref}
-      onCancel={(e) => { e.stopPropagation(); close(); }}
+      aria-labelledby={headingId}
+      onCancel={(e) => { e.preventDefault(); e.stopPropagation(); close?.(); }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) close();
+        if (e.target === e.currentTarget) close?.();
       }}
     >
       <div className="modal-head">
-        <h2>{title}</h2>
-        <IconButton title="关闭" onClick={close}>
+        <h2 id={headingId}>{title}</h2>
+        {close && <IconButton title="关闭" onClick={close}>
           <X size={19} />
-        </IconButton>
+        </IconButton>}
       </div>
       {children}
     </dialog>
   );
+}
+
+function RebuyDialog({ room, now, busy, connected, connection, send }: {
+  room: Room; now: number; busy: boolean; connected: boolean; connection: number;
+  send: (body: object) => Promise<boolean>;
+}) {
+  const [amount, setAmount] = useState(room.settings.bb * 100);
+  const [submitted, setSubmitted] = useState(false);
+  const request = room.requests.find(r => r.pid === room.me);
+  // Bridge the HTTP response and the authoritative WebSocket request snapshot.
+  useEffect(() => { if (request) setSubmitted(false); }, [request]);
+  useEffect(() => { setSubmitted(false); }, [connection]);
+  const remaining = Math.max(0, Math.ceil((room.deadline || 0) - now));
+  const pending = !!request || submitted;
+  const disabled = busy || !connected || remaining === 0;
+  return <Modal title="重买入">
+    <p className="rebuy-deadline" role="status">{remaining > 0
+      ? `筹码归零，请在 ${remaining} 秒内完成重买入，否则自动离座。`
+      : "重买入时间已到，等待离座结果。"}</p>
+    {!connected && <p role="status">连接已断开，正在重新连接…</p>}
+    {pending ? <div className="rebuy-pending">
+      <p>等待房主审批{request ? ` · ${n(request.amount)}` : ""}</p>
+      {request && !request.approved && <button className="secondary" disabled={disabled}
+        onClick={() => void send({ type: "cancel_request", request: request.id })}>取消申请</button>}
+    </div> : <form onSubmit={async e => {
+      e.preventDefault();
+      if (disabled) return;
+      setSubmitted(true);
+      if (!await send({ type: "topup", amount })) setSubmitted(false);
+    }}>
+      <label>买入筹码<input autoFocus type="number" min="1" step="1" value={amount}
+        onChange={e => setAmount(Number(e.target.value))} required disabled={disabled} /></label>
+      <button className="primary wide" disabled={disabled}>确认买入</button>
+    </form>}
+    <button className="secondary wide rebuy-leave" disabled={disabled}
+      onClick={() => void send({ type: "leave" })}>离座观战</button>
+  </Modal>;
 }
 
 function CopyField({
@@ -577,16 +614,21 @@ const desktopPositions = [
   [80, 81],
 ];
 const mobilePositions = [
-  [50, 94],
-  [13, 82],
-  [13, 62],
-  [13, 33],
-  [34, 13],
-  [66, 13],
-  [87, 33],
-  [87, 62],
-  [87, 82],
+  [50, 93],
+  [15, 84],
+  [15, 62],
+  [15, 35],
+  [35, 10],
+  [65, 10],
+  [85, 35],
+  [85, 62],
+  [85, 84],
 ];
+// The fourth and fifth community cards need the lower seats to clear the full board.
+const mobilePositionsFullBoard = mobilePositions.map(([x, y], position) => [
+  x,
+  position === 0 ? 99 : [1, 8].includes(position) ? 90 : [2, 7].includes(position) ? 70 : y,
+]);
 
 function potTitle(group: PotResult, hand: Hand) {
   return `${hand.boards.length > 1 ? `第 ${group.board + 1} 组 · ` : ""}${group.pot ? `边池 ${group.pot}` : "主池"}${group.winners.length > 1 ? " · 平分" : ""}`;
@@ -624,8 +666,9 @@ function ResultScrollHint({ room, now }: { room: Room; now: number }) {
     const update = () => {
       const bounds = root.getBoundingClientRect();
       const result = seat.getBoundingClientRect();
+      const visibleBottom = bounds.bottom - (window.matchMedia('(max-width: 760px)').matches ? 126 : 0);
       setOutside(window.matchMedia('(max-width: 760px)').matches &&
-        (result.top < bounds.top || result.bottom > bounds.bottom));
+        (result.top < bounds.top || result.bottom > visibleBottom));
     };
     const observer = new ResizeObserver(update);
     observer.observe(root);
@@ -642,7 +685,8 @@ function ResultScrollHint({ room, now }: { room: Room; now: number }) {
     const root = container.current, seat = target.current;
     if (!root || !seat) return;
     const bounds = root.getBoundingClientRect(), result = seat.getBoundingClientRect();
-    root.scrollBy({ top: result.bottom > bounds.bottom ? result.bottom - bounds.bottom + 8 : result.top - bounds.top - 8,
+    const visibleBottom = bounds.bottom - 126;
+    root.scrollBy({ top: result.bottom > visibleBottom ? result.bottom - visibleBottom + 8 : result.top - bounds.top - 8,
       behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
   }}>查看我的结果 <ChevronDown size={12} /></button>;
 }
@@ -682,6 +726,7 @@ function PokerTable({
   const activeBoard = hand?.result ? Math.max(0, (hand.boards.length || 1) - 1) : hand?.active_board || 0;
   const { boards, animated } = useBoardPresentation(hand, now, connection, sound);
   const visibleCount = boards[activeBoard]?.length || 0;
+  const mobileSeatPositions = visibleCount >= 4 ? mobilePositionsFullBoard : mobilePositions;
   const equity = room.phase === 'dealing' && !hand?.result && !hand?.runout_result?.length
     && visibleCount < 5 && hand?.runout_equity?.board === activeBoard
     ? hand.runout_equity.frames[String(visibleCount)] : undefined;
@@ -724,13 +769,13 @@ function PokerTable({
               {hand && hand.boards.length > 1 && (
                 <span className="board-number">{i + 1}</span>
               )}
-              {Array.from({ length: 5 }, (_, j) => (
-                <Card key={`${j}:${board[j] || "empty"}`} code={board[j]}
+              {board.map((code, j) => (
+                <Card key={`${j}:${code}`} code={code}
                   animate={animated.has(`${i}:${j}`)}
                   animateWin={animateWin}
                   dimmed={mainGroups.some(group => group.board === i && group.winners.length > 0) &&
-                    !mainGroups.some(group => group.board === i && group.winners.some(w => w.cards.includes(board[j])))}
-                  winning={mainGroups.some(group => group.board === i && group.winners.some(w => w.cards.includes(board[j])))} />
+                    !mainGroups.some(group => group.board === i && group.winners.some(w => w.cards.includes(code)))}
+                  winning={mainGroups.some(group => group.board === i && group.winners.some(w => w.cards.includes(code)))} />
               ))}
             </div>
           ))}
@@ -779,7 +824,7 @@ function PokerTable({
           : room.players.find((p) => p.seat === seat && !(showingHandSeats && hand!.ids.includes(p.id)));
         const position = (seat - ownSeat + 9) % 9;
         const [x, y] = desktopPositions[position],
-          [mx, my] = mobilePositions[position];
+          [mx, my] = mobileSeatPositions[position];
         const actor = p && hand?.clock?.pid === p.id && !room.recovery;
         const bankMode = actor && now >= hand!.clock!.base_until;
         const seconds = actor
@@ -804,7 +849,6 @@ function PokerTable({
         const allLabels = labels?.length ? labels : ownLabels;
         const displayedLabels = allLabels[activeBoard] ? [allLabels[activeBoard]] : [];
         const shownStack = p ? balances[p.id] ?? p.stack : 0;
-        const won = p && showingResult && !settling ? hand?.result?.find(result => result.pid === p.id)?.won || 0 : 0;
         const mainWinner = p && (hand?.uncontested_winner === p.id || mainGroups.some(group => group.winners.some(w => w.pid === p.id)));
         const winningHoles = new Set(mainGroups.flatMap(group => group.winners.filter(w => w.pid === p?.id).flatMap(w => w.cards)));
         const status = p && showingResult && p.seat === null
@@ -830,7 +874,7 @@ function PokerTable({
         return (
           <div
             key={seat}
-            className={`seat-wrap position-${position} ${p?.id === room.me ? "own-seat" : ""} ${displayedLabels.length ? "has-result" : ""} ${displayedLabels.length > 1 ? "double-result" : ""} ${p && (n(shownStack).length > 7 || n(won).length > 7) ? "large-amounts" : ""}`}
+            className={`seat-wrap position-${position} ${p?.id === room.me ? "own-seat" : ""} ${displayedLabels.length ? "has-result" : ""} ${displayedLabels.length > 1 ? "double-result" : ""} ${p && n(shownStack).length > 7 ? "large-amounts" : ""}`}
             style={
               {
                 "--x": `${x}%`,
@@ -855,7 +899,7 @@ function PokerTable({
                   {allIn ? <span className="seat-state all-in" title={status}>全下</span>
                     : compactStatus && compactStatus !== "你" && compactStatus !== "离线" && <span className="seat-state" title={status}>{compactStatus}</span>}
                 </div>
-                <SeatAmounts stack={shownStack} won={won}
+                <SeatAmounts stack={shownStack}
                   now={now} pid={p.id} motionKey={`${motion.key}:${p.id}`} />
                 {displayedLabels.length > 0 && <div
                   className={`seat-hand-label ${p.id === room.me ? "own-hand-label" : "public-hand-label"}`}
@@ -966,7 +1010,7 @@ function PokerTable({
       })}
       <SettlementLayer room={room} now={now} root={stageRef} baseline={motion.at} motionKey={motion.key} />
       <InteractionLayer room={room} ownSeat={ownSeat} events={interactions}
-        desktop={desktopPositions} mobile={mobilePositions} />
+        desktop={desktopPositions} mobile={mobileSeatPositions} />
     </div>
   );
 }
@@ -1114,6 +1158,15 @@ function RoomScreen({
     if (room?.legal?.min_raise) setRaise(room.legal.min_raise);
     setRaiseOpen(false);
   }, [room?.hand?.seq, room?.hand?.number]);
+  const rebuyDialogNeeded = !!room && room.phase === "rebuy" &&
+    room.rebuy.includes(room.me) && (!room.hand?.presentation || now >= room.hand.presentation.until);
+  useEffect(() => {
+    if (rebuyDialogNeeded) {
+      setModal(null);
+      setRoomMenuOpen(false);
+      setBubbleOpen(false);
+    }
+  }, [rebuyDialogNeeded]);
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [room?.logs.length, panel]);
@@ -1228,6 +1281,7 @@ function RoomScreen({
   const burstDisabled = interactionUnavailable || interactionNow - interactionSent.burst < 10;
   const awaiting = room.requests.find((r) => r.pid === room.me);
   const countdown = Math.max(0, Math.ceil((room.deadline || 0) - now));
+  const needsRebuy = !presentationActive && room.phase === "rebuy" && room.rebuy.includes(me.id);
   const openSeat = (s: number) => {
     setSeat(s);
     setNickname(
@@ -1482,6 +1536,7 @@ function RoomScreen({
               人观战
             </span>
           </div>
+          <div className="table-action-clearance" aria-hidden="true" />
         </section>
         {drawer && (
           <button
@@ -1802,19 +1857,6 @@ function RoomScreen({
         {bubbleOpen && me.seat !== null && !room.closed_at &&
           <BubblePicker close={() => setBubbleOpen(false)} disabled={bubbleDisabled}
             send={preset => void sendInteraction({ type: "bubble", preset }, "bubble")} />}
-        <div className="my-status">
-          <div className="my-avatar">
-            {me.seat === null ? <Eye size={20} /> : me.name.slice(0, 1)}
-          </div>
-          <div>
-            <b>{me.seat === null ? "观战中" : me.name}</b>
-            <span>
-              {me.seat === null
-                ? `${room.players.filter((p) => p.online).length} 人在线`
-                : `筹码 ${n(presentationBalances[me.id] ?? me.stack)} · BANK ${Math.ceil(me.bank)}s`}
-            </span>
-          </div>
-        </div>
         <div className="action-content">
           {room.closed_at ? (
             <div className="finished-label">
@@ -1890,28 +1932,7 @@ function RoomScreen({
                 </>
               )}
             </div>
-          ) : !presentationActive && room.rebuy.includes(me.id) ? (
-            <div className="prompt-actions">
-              <div>
-                <b>筹码归零，请重买入</b>
-                <span>{countdown}s</span>
-              </div>
-              <button
-                className="secondary"
-                disabled={busy}
-                onClick={() => send({ type: "leave" })}
-              >
-                离座
-              </button>
-              <button
-                className="primary"
-                disabled={busy || !!awaiting}
-                onClick={openTopup}
-              >
-                {awaiting ? "等待房主审批" : "重买入"}
-              </button>
-            </div>
-          ) : mayAct || bettingStage ? (
+          ) : needsRebuy ? null : mayAct || bettingStage ? (
             <div className={`betting-area ${!mayAct ? "betting-idle" : ""} ${raiseOpen && mayAct ? "raise-expanded" : ""}`}>
             <div className="bet-controls">
               {raiseOpen && mayAct && <div className="raise-options" role="group" aria-label="加注金额设置">
@@ -2066,9 +2087,14 @@ function RoomScreen({
               )}
             </div>
           )}
-          {showWindow && (
+          {showWindow && !needsRebuy && (
             <div className="reveal-actions" role="group" aria-label="本手亮牌">
               <span className="reveal-countdown"><Eye size={15} />{Math.max(0, Math.ceil(hand!.reveal_until - now))}s</span>
+              <button
+                className="secondary reveal-all"
+                disabled={busy || status !== "connected" || hand!.revealed.includes(me.id)}
+                onClick={() => reveal([0, 1])}
+              >亮出全部</button>
               <div className="reveal-choices">
                 {hand!.cards[me.id].map((card, i) => {
                   const shown = hand!.shown_cards[me.id]?.includes(i);
@@ -2081,23 +2107,20 @@ function RoomScreen({
                       disabled={busy || status !== "connected" || shown}
                       onClick={() => reveal([i])}
                     >
-                      <Card code={card} small />
+                      <span className={card && /[hd]$/.test(card) ? "red-suit" : ""}>
+                        {card ? `${card[0] === "T" ? "10" : card[0]}${({ s: "♠", h: "♥", d: "♦", c: "♣" } as Record<string, string>)[card[1]] || ""}` : "?"}
+                      </span>
                       {shown && <Check size={12} className="reveal-mark" />}
                     </button>
                   );
                 })}
               </div>
-              <button
-                className="secondary"
-                disabled={busy || status !== "connected" || hand!.revealed.includes(me.id)}
-                onClick={() => reveal([0, 1])}
-              >
-                <Eye size={16} />亮出全部
-              </button>
             </div>
           )}
         </div>
       </footer>
+      {needsRebuy && <RebuyDialog room={room} now={now} busy={busy}
+        connected={status === "connected"} connection={connection} send={send} />}
       {modal === "seat" && (
         <Modal title={`入座 ${seat + 1} 号位`} close={() => setModal(null)}>
           <form

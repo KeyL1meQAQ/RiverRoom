@@ -15,8 +15,16 @@ function current(snapshot: Room) {
   ) as Room;
 }
 
+function displayFixture(name: string | Room) {
+  if (typeof name !== 'string') return name;
+  const snapshot = structuredClone(fixtures[name]);
+  // Static layout fixtures should not launch the separate rebuy dialog.
+  if (snapshot.phase === 'rebuy') { snapshot.phase = 'between'; snapshot.rebuy = []; }
+  return snapshot;
+}
+
 async function mount(page: Page, name: string | Room) {
-  let state = current(typeof name === 'string' ? fixtures[name] : name);
+  let state = current(displayFixture(name));
   let socket: WebSocketRoute;
   await page.route("**/api/rooms/presentation", route => route.fulfill({ json: state }));
   await page.route("**/api/rooms/presentation/logs**", route => route.fulfill({ json: { logs: state.logs } }));
@@ -27,33 +35,182 @@ async function mount(page: Page, name: string | Room) {
   await page.goto("/r/presentation");
   await expect(page.locator(".connection")).toHaveClass(/connected/);
   const push = (name: string | Room) => {
-    state = current(typeof name === 'string' ? fixtures[name] : name);
+    state = current(displayFixture(name));
     socket.send(JSON.stringify({ type: "state", state }));
     return state;
   };
   return Object.assign(push, {
     reconnectWith(name: string | Room) {
-      state = current(typeof name === 'string' ? fixtures[name] : name);
+      state = current(displayFixture(name));
       socket.close({ code: 1012, reason: 'test reconnect' });
     },
   });
 }
+
+test('rebuy opens immediately after settlement and remains until approval or leaving', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const commands: Record<string, unknown>[] = [];
+  await page.route('**/api/rooms/presentation/commands', route => {
+    commands.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ok: true } });
+  });
+  const state = structuredClone(fixtures.twice);
+  state.phase = 'rebuy';
+  state.rebuy = [state.me];
+  state.players.find(player => player.id === state.me)!.stack = 0;
+  state.hand!.presentation = null;
+  state.hand!.reveal_start = state.server_time - 1;
+  state.hand!.reveal_until = state.server_time + 5;
+  state.deadline = state.server_time + 20;
+  const push = await mount(page, state);
+  const dialog = page.getByRole('dialog', { name: '重买入' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('买入筹码')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: '离座观战' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: '关闭' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: /亮出/ })).toHaveCount(0);
+  await page.screenshot({ path: 'artifacts/pokernow-followup-rebuy-mobile.png' });
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel('买入筹码').fill('200');
+  await dialog.getByRole('button', { name: '确认买入' }).click();
+  await expect.poll(() => commands.length).toBe(1);
+  expect(commands[0]).toMatchObject({ type: 'topup', amount: 200 });
+  const request = { id: 'rebuy-request', kind: 'topup' as const, pid: state.me,
+    name: state.players.find(player => player.id === state.me)!.name,
+    seat: state.players.find(player => player.id === state.me)!.seat!, amount: 200, approved: false };
+  state.requests = [request];
+  push(state);
+  await expect(dialog).toContainText('等待房主审批');
+  await dialog.getByRole('button', { name: '取消申请' }).click();
+  await expect.poll(() => commands.length).toBe(2);
+  expect(commands[1]).toMatchObject({ type: 'cancel_request', request: request.id });
+  state.requests = [];
+  push(state);
+  await expect(dialog.getByLabel('买入筹码')).toBeVisible();
+  await dialog.getByRole('button', { name: '离座观战' }).click();
+  await expect.poll(() => commands.length).toBe(3);
+  expect(commands[2]).toMatchObject({ type: 'leave' });
+  state.rebuy = [];
+  state.phase = 'between';
+  state.players.find(player => player.id === state.me)!.seat = null;
+  push(state);
+  await expect(dialog).toHaveCount(0);
+});
+
+test('action controls float without a dock on mobile and desktop', async ({ page }) => {
+  const push = await mount(page, 'table_actions');
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 844 });
+    push('table_actions');
+    const layout = await page.evaluate(() => {
+      const dock = document.querySelector<HTMLElement>('.action-bar')!;
+      const action = document.querySelector<HTMLElement>('.action-content')!;
+      const board = document.querySelector<HTMLElement>('.boards .playing-card')!;
+      const other = document.querySelector<HTMLElement>('.position-4 .hole-cards .playing-card')!;
+      return { dockHeight: dock.getBoundingClientRect().height,
+        dockBackground: getComputedStyle(dock).backgroundColor,
+        action: action.getBoundingClientRect().toJSON(),
+        boardWidth: board.getBoundingClientRect().width,
+        otherWidth: other.getBoundingClientRect().width };
+    });
+    expect(layout.dockHeight).toBe(0);
+    expect(layout.dockBackground).toBe('rgba(0, 0, 0, 0)');
+    expect(layout.action.bottom).toBeGreaterThan(780);
+    if (width <= 760) {
+      expect(layout.boardWidth).toBeGreaterThanOrEqual(48);
+      expect(layout.otherWidth).toBeGreaterThanOrEqual(40);
+    } else expect(layout.action.left).toBeGreaterThan(width / 2);
+  }
+});
+
+test('only dealt community cards appear and clear every player area', async ({ page }) => {
+  const push = await mount(page, 'table_actions');
+  const base = structuredClone(fixtures.table_actions);
+  const runout = [...base.hand!.boards[0], 'Tc', 'Jc'];
+  for (const [width, height] of [[320, 568], [360, 740], [390, 844], [760, 900], [761, 800], [1440, 960]]) {
+    await page.setViewportSize({ width, height });
+    for (const count of [0, 3, 4, 5]) {
+      const snapshot = structuredClone(base);
+      snapshot.hand!.boards[0] = runout.slice(0, count);
+      push(snapshot);
+      await expect(page.locator('.boards .playing-card')).toHaveCount(count);
+      await expect(page.locator('.boards .placeholder')).toHaveCount(0);
+      const overlaps = await page.evaluate(() => {
+        const cards = [...document.querySelectorAll('.boards .playing-card')];
+        const players = [...document.querySelectorAll('.seat.occupied, .seat-wrap .hole-cards')];
+        const intersects = (a: DOMRect, b: DOMRect) =>
+          Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
+          Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+        return cards.flatMap(card => players.filter(player =>
+          intersects(card.getBoundingClientRect(), player.getBoundingClientRect()))
+          .map(player => `${card.textContent} overlaps ${player.closest('.seat-wrap')?.className}`));
+      });
+      expect(overlaps, `${width}px with ${count} community cards`).toEqual([]);
+      if (width === 390 && [3, 5].includes(count))
+        await page.screenshot({ path: `artifacts/pokernow-board-${count}-mobile.png` });
+      if (width === 1440 && count === 3)
+        await page.screenshot({ path: 'artifacts/pokernow-board-3-desktop.png' });
+    }
+  }
+});
+
+test('mobile betting chips follow the player frame and own cards', async ({ page }) => {
+  const push = await mount(page, 'table_actions');
+  const original = structuredClone(fixtures.table_actions);
+  for (const width of [320, 360, 390, 760]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const count of [3, 5]) {
+      const snapshot = structuredClone(original);
+      snapshot.hand!.boards[0] = [...original.hand!.boards[0], 'Tc', 'Jc'].slice(0, count);
+      snapshot.hand!.clock = null;
+      snapshot.hand!.last_actions[snapshot.me] = '跟注';
+      snapshot.players.find(player => player.id === snapshot.me)!.bet = 20;
+      push(snapshot);
+      const positions = await page.evaluate(() => {
+        const measure = (position: number) => {
+          const wrap = document.querySelector(`.position-${position}`)!;
+          const chip = wrap.querySelector('.seat-bet')!.getBoundingClientRect();
+          const frame = wrap.querySelector('.seat')!.getBoundingClientRect();
+          const cards = wrap.querySelector('.hole-cards')!.getBoundingClientRect();
+          return { chip: chip.toJSON(), frame: frame.toJSON(), cards: cards.toJSON() };
+        };
+        return [0, 1, 2, 3, 6, 7, 8].map(measure);
+      });
+      const [own, bottomLeft, middleLeft, upperLeft, upperRight, middleRight, bottomRight] = positions;
+      const center = (r: DOMRect) => (r.top + r.bottom) / 2;
+      expect(own.chip.bottom, `${width}px ${count} cards: own chip above cards`).toBeLessThan(own.cards.top);
+      expect(own.cards.top - own.chip.bottom).toBeLessThanOrEqual(22);
+      for (const seat of [middleLeft, middleRight]) {
+        expect(Math.abs(center(seat.chip) - seat.frame.top), `${width}px ${count} cards: chip at frame top`).toBeLessThanOrEqual(6);
+      }
+      for (const seat of [upperLeft, upperRight]) {
+        expect(center(seat.chip)).toBeGreaterThan(center(seat.frame));
+        expect(center(seat.chip)).toBeLessThan(seat.frame.bottom);
+      }
+      for (const seat of [bottomLeft, bottomRight]) {
+        expect(center(seat.chip)).toBeGreaterThan(seat.cards.top);
+        expect(center(seat.chip)).toBeLessThan(seat.frame.top);
+      }
+    }
+  }
+});
 
 test('settled results survive the reveal deadline, reload, and the next straddle offer', async ({ page }) => {
   const state = structuredClone(fixtures.twice);
   state.phase = 'between'; state.paused = true; state.rebuy = [];
   state.hand!.reveal_until = state.server_time - 1;
   const push = await mount(page, state);
-  await expect(page.locator('.seat-payout')).not.toHaveCount(0);
+  await expect(page.locator('.seat-payout')).toHaveCount(0);
   await expect(page.locator('.winning-seat')).not.toHaveCount(0);
   await expect(page.locator('.table-status')).toHaveText('后续发牌已暂停');
   await expect(page.locator('.reveal-card')).toHaveCount(0);
   await page.reload();
-  await expect(page.locator('.seat-payout')).not.toHaveCount(0);
+  await expect(page.locator('.seat-payout')).toHaveCount(0);
   state.phase = 'straddle'; state.straddle = state.me; state.deadline = state.server_time + 5;
   push(state);
   await expect(page.locator('.table-status')).toContainText('UTG 选择 Straddle');
-  await expect(page.locator('.seat-payout')).not.toHaveCount(0);
+  await expect(page.locator('.seat-payout')).toHaveCount(0);
   push('preflop');
   await expect(page.locator('.seat-payout')).toHaveCount(0);
   await expect(page.locator('.winning-seat')).toHaveCount(0);
@@ -101,6 +258,7 @@ test('expired result seats use current occupants and never give a newcomer old c
 
 test('mobile result location is opt-in and preserves readable results after the reveal window', async ({ page }) => {
   const state = structuredClone(fixtures.nine_twice);
+  state.phase = 'between'; state.rebuy = [];
   state.hand!.reveal_until = state.server_time - 1;
   await page.setViewportSize({ width: 320, height: 568 });
   await mount(page, state);
@@ -191,14 +349,6 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
             : position === 0 ? rect.bottom <= Math.min(seat.top, cards.top)
             : position < 4 ? rect.left >= seat.right : rect.right <= seat.left;
 
-          const mobileSide = innerWidth <= 760 && [1, 2, 3, 6, 7, 8].includes(position);
-          const largeLayout = !!document.querySelector('.table-stage:has(.large-bet)');
-          const mobileAnchor = !mobileSide || ([1, 8].includes(position)
-            ? largeLayout
-              ? Math.abs((rect.top + rect.bottom) / 2 - (seat.top + seat.bottom) / 2) <= 1
-              : Math.abs(rect.bottom - (seat.top - 15)) <= 1
-            : [3, 6].includes(position) ? Math.abs(rect.top - (seat.bottom + 6)) <= 1
-            : Math.abs((rect.top + rect.bottom) / 2 - (seat.top + seat.bottom) / 2) <= 1);
           const peerPosition = ({ 1: 8, 8: 1, 2: 7, 7: 2, 3: 6, 6: 3 } as Record<number, number>)[position];
           const peer = cornerSeat ? document.querySelector(`.position-${peerPosition} .seat-bet`) : null;
           const aligned = !peer || Math.abs(rect.top - peer.getBoundingClientRect().top) <= 1;
@@ -213,10 +363,9 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
             return bounds.left < rect.left || bounds.right > rect.right || bounds.top < rect.top || bounds.bottom > rect.bottom;
           });
           return [
-            ...collisions.map(other => `${badge.parentElement!.className}: ${badge.textContent} overlaps ${other.className}`),
+            ...collisions.map(other => `${badge.parentElement!.className}: ${badge.textContent} overlaps ${other.className} in ${other.closest('.seat-wrap')?.className || 'table'}`),
             ...(textOverflow ? [`${badge.textContent} text overflow`] : []),
             ...(!inward ? [`${badge.parentElement!.className} is not on the inward side`] : []),
-            ...(!mobileAnchor ? [`${badge.parentElement!.className} does not follow its frame corner or middle line`] : []),
             ...(!aligned ? [`${badge.parentElement!.className} is not level with position-${peerPosition}`] : []),
             ...(gap < (innerWidth > 760 ? 7 : 5)
               ? [`${badge.parentElement!.className} gap is only ${gap}px`] : []),
@@ -344,6 +493,7 @@ test("nine tied winners highlight only the board, remain inspectable in history,
       });
     });
     expect(collision).toBeFalsy();
+    await page.locator(".own-seat").evaluate(node => node.scrollIntoView({ block: 'center', inline: 'nearest' }));
     const hint = await page.locator(".own-seat").boundingBox();
     const controls = await page.locator(".action-bar").boundingBox();
     expect(hint!.y + hint!.height).toBeLessThanOrEqual(controls!.y);
@@ -356,7 +506,7 @@ test("nine tied winners highlight only the board, remain inspectable in history,
   expect(errors).toEqual([]);
 });
 
-test("final runout highlights main-pot winners and shows total payouts in player frames", async ({ page }) => {
+test("final runout highlights main-pot winners without payout capsules", async ({ page }) => {
   const push = await mount(page, "twice");
   const groups = fixtures.twice.hand!.showdown_results!;
   expect(groups.length).toBeGreaterThanOrEqual(4);
@@ -372,9 +522,7 @@ test("final runout highlights main-pot winners and shows total payouts in player
       const row = seat.locator('..').locator(`.seat-hand-label > span[data-board="${board}"]`);
       await expect(row).toContainText(fixtures.twice.hand!.public_hand_labels![player.id][board]);
     }
-    const won = fixtures.twice.hand!.result!.find(result => result.pid === player.id)?.won || 0;
-    if (won > 0) await expect(seat.locator('.seat-payout')).toHaveText(`+${won.toLocaleString('zh-CN')}`);
-    else await expect(seat.locator('.seat-payout')).toHaveCount(0);
+    await expect(seat.locator('.seat-payout')).toHaveCount(0);
     const expectedHoles = new Set(main.flatMap(group => group.winners.filter(w => w.pid === player.id).flatMap(w => w.cards)).filter(card => player.cards.includes(card)));
     await expect(seat.locator('..').locator('.hole-cards .winning-card')).toHaveCount(expectedHoles.size);
   }
@@ -411,7 +559,7 @@ test('side-pot-only winner is visible without a winning frame or highlighted hol
   const seat = page.getByRole('button', { name: `${player.name}，筹码 ${player.stack}`, exact: true });
   await expect(seat).not.toHaveClass(/winning-seat/);
   await expect(seat.locator('..').locator('.seat-hand-label')).toContainText(sideWinner.label);
-  await expect(seat.locator('.seat-payout')).toHaveText(`+${(fixtures.side_pots.hand!.result!.find(result => result.pid === player.id)?.won || 0).toLocaleString('zh-CN')}`);
+  await expect(seat.locator('.seat-payout')).toHaveCount(0);
   await expect(seat.locator('..').locator('.hole-cards .winning-card')).toHaveCount(0);
 });
 
@@ -431,7 +579,7 @@ test('nine-player double runout and ordinary play fit with readable cards and se
       if (fixture === 'nine_twice') {
         await expect(page.locator('.seat-hand-label > span')).toHaveCount(9);
         await expect(page.locator('.boards .winning-card')).toHaveCount(5);
-        await expect(page.locator('.seat-payout')).not.toHaveCount(0);
+        await expect(page.locator('.seat-payout')).toHaveCount(0);
       }
       const issues = await page.evaluate(() => {
         const overlaps = (a: DOMRect, b: DOMRect) =>
@@ -573,7 +721,7 @@ test('mobile approval shortcut counts actionable requests and opens management',
   await expect(page.getByRole('button', { name: `批准 ${state.requests[0].name}`, exact: true })).toBeVisible();
 });
 
-test('player frames keep names, progress and complete winnings readable through crowded states', async ({ page }) => {
+test('player frames keep names, progress and complete stacks readable through crowded states', async ({ page }) => {
   const initial = structuredClone(fixtures.table_actions);
   initial.players.forEach((player, index) => { player.name = `长昵称玩家${index}二十个字符需要省略展示`; });
   initial.players.find(player => player.id === initial.me)!.online = false;
@@ -618,7 +766,7 @@ test('player frames keep names, progress and complete winnings readable through 
     result.hand!.result!.forEach(row => { if (row.won) row.won = 987654321; });
     push(result);
     await expect(page.locator('.turn-track')).toHaveCount(0);
-    await expect(page.locator('.seat-payout')).not.toHaveCount(0);
+    await expect(page.locator('.seat-payout')).toHaveCount(0);
     await expect(page.locator('.seat-hand-label > span')).toHaveCount(9);
     const issues = await page.evaluate(() => {
       const intersects = (a: DOMRect, b: DOMRect) => Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1 && Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1;
@@ -697,7 +845,7 @@ test('settlement raises whole winning cards once and dims only visible non-winni
   expired.hand!.reveal_until = expired.server_time - 1;
   push(expired);
   await expect(page.locator('.table-stage')).toHaveClass(/showing-result/);
-  await expect(page.locator('.seat-payout')).not.toHaveCount(0);
+  await expect(page.locator('.seat-payout')).toHaveCount(0);
   await expect(page.locator('.winning-seat').first()).toBeVisible();
   await expect(page.locator('.reveal-card')).toHaveCount(0);
   await expect(winners).toHaveCount(count);
@@ -796,7 +944,7 @@ test('mobile hole-card ranks and suits remain visible above overlapping cards an
     push(snapshot);
     const glyphs = page.locator('.hole-cards .playing-card > b, .hole-cards .playing-card > span');
     for (const glyph of await glyphs.all()) {
-      await glyph.scrollIntoViewIfNeeded();
+      await glyph.evaluate(node => node.scrollIntoView({ block: 'center', inline: 'nearest' }));
       const hidden = await glyph.evaluate(node => {
         const rect = node.getBoundingClientRect();
         const card = node.closest('.playing-card')!;
@@ -805,8 +953,8 @@ test('mobile hole-card ranks and suits remain visible above overlapping cards an
           [rect.right - 2, rect.top + rect.height / 2],
           [rect.left + rect.width / 2, rect.bottom - 2],
         ];
-        return points.filter(([x, y]) => !card.contains(document.elementFromPoint(x, y))).map(() =>
-          `${card.closest('.seat-wrap')!.className}: ${node.textContent}`);
+        return points.filter(([x, y]) => !card.contains(document.elementFromPoint(x, y))).map(([x, y]) =>
+          `${card.closest('.seat-wrap')!.className}: ${node.textContent} covered by ${document.elementFromPoint(x, y)?.className} at ${Math.round(x)},${Math.round(y)}`);
       });
       expect.soft(hidden, `${width}px glyph occlusion`).toEqual([]);
     }
@@ -819,7 +967,7 @@ test('mobile hole-card ranks and suits remain visible above overlapping cards an
   await page.screenshot({ path: 'artifacts/ui-20260917-suits-mobile-fixed.png', fullPage: true });
 });
 
-test('settled stacks and payout amounts remain readable at all breakpoints', async ({ page }) => {
+test('settled stacks remain readable at all breakpoints without payout capsules', async ({ page }) => {
   const result = structuredClone(fixtures.tie);
   result.players.forEach(player => { player.stack = 200; });
   result.hand!.result!.forEach(row => { row.won = 123; });
@@ -827,7 +975,7 @@ test('settled stacks and payout amounts remain readable at all breakpoints', asy
   for (const width of [320, 360, 390, 760, 761, 1440]) {
     await page.setViewportSize({ width, height: 960 });
     push(result);
-    await expect(page.locator('.seat-payout')).not.toHaveCount(0);
+    await expect(page.locator('.seat-payout')).toHaveCount(0);
     const issues = await page.locator('.seat-stack-row').evaluateAll(rows => rows.flatMap(row => {
       const stack = row.querySelector('.stack')!.getBoundingClientRect();
       const bounds = row.getBoundingClientRect();

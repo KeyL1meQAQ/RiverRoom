@@ -103,8 +103,11 @@ for (const key of ['paid', 'zero']) {
   test(`${key} reward uses the same central badge and never replays on refresh or reconnect`, async ({ page }) => {
     const { push, reconnect } = await mount(page, fixtures[key + '_before']);
     const award = fixtures[key].hand!.bounty!;
+    const settled = structuredClone(fixtures[key]);
+    // The award presentation is independent of the forced rebuy dialog.
+    if (settled.phase === 'rebuy') { settled.phase = 'between'; settled.rebuy = []; }
     await expect(page.locator('.bounty-celebration')).toHaveCount(0);
-    push(fixtures[key]);
+    push(settled);
     const badge = page.locator('.bounty-celebration');
     await expect(badge).toBeVisible();
     await expect(badge.locator('.bounty-total')).toHaveText(`+${award.total}`);
@@ -116,12 +119,12 @@ for (const key of ['paid', 'zero']) {
     await expect(page.locator('dialog')).toBeVisible();
     await page.getByRole('button', { name: '关闭', exact: true }).click();
     await expect(badge).toHaveCount(0, { timeout: 4500 });
-    push(fixtures[key]);
+    push(settled);
     await expect(badge).toHaveCount(0);
     await page.reload();
     await expect(page.locator('.connection')).toHaveClass(/connected/);
     await expect(badge).toHaveCount(0);
-    reconnect(fixtures[key]);
+    reconnect(settled);
     await expect(page.locator('.connection')).toHaveClass(/offline/);
     await expect(page.locator('.connection')).toHaveClass(/connected/);
     await expect(badge).toHaveCount(0);
@@ -175,7 +178,9 @@ test('badge remains centered with complete amounts on narrow and wide screens an
     push(fixtures.paid_before);
     await expect(page.locator('.bounty-celebration')).toHaveCount(0);
   }
-  push(fixtures.zero);
+  const zero = structuredClone(fixtures.zero);
+  zero.phase = 'between'; zero.rebuy = [];
+  push(zero);
   await expect(page.locator('.bounty-total')).toHaveText('+0');
   await page.screenshot({ path: 'artifacts/bounty-zero.png' });
   await expect(page.locator('.bounty-celebration')).toHaveCount(0, { timeout: 4500 });

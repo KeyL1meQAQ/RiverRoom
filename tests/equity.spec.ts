@@ -91,7 +91,7 @@ test('completed flop and turn keep their odds throughout the server reading paus
   await expect(page.locator('.runout-equity')).toHaveCount(0);
 });
 
-test('card faces, backs and placeholders retain 5:7 across width and height breakpoints', async ({ page }) => {
+test('dealt card faces and backs retain 5:7 without empty community slots', async ({ page }) => {
   const { push } = await mount(page, fixtures.vote);
   const sizes = [[320, 568], [340, 740], [360, 740], [380, 844], [390, 844],
     [760, 900], [761, 800], [1024, 800], [1100, 850], [1101, 850],
@@ -100,13 +100,15 @@ test('card faces, backs and placeholders retain 5:7 across width and height brea
     await page.setViewportSize({ width, height });
     for (const state of [fixtures.vote, fixtures.river]) {
       await push(state);
-      await expect(page.locator('.boards .playing-card')).toHaveCount(5);
+      const dealt = state.hand!.boards[state.hand!.active_board || 0].length;
+      await expect(page.locator('.boards .playing-card')).toHaveCount(dealt);
+      await expect(page.locator('.boards .placeholder')).toHaveCount(0);
       const cards = await page.locator('.playing-card').evaluateAll(nodes => nodes.map(node => {
         // CSS dimensions exclude the intentional fan rotation and winner lift.
         const style = getComputedStyle(node);
         return { kind: node.className, width: parseFloat(style.width), height: parseFloat(style.height) };
       }));
-      expect(cards.length).toBeGreaterThanOrEqual(23);
+      expect(cards.length).toBeGreaterThanOrEqual(18 + dealt);
       for (const card of cards) {
         expect(Math.abs(card.width / card.height - 5 / 7), `${width}x${height}: ${JSON.stringify(card)}`).toBeLessThan(.001);
       }
