@@ -178,15 +178,17 @@ test('mobile betting chips follow the player frame and own cards', async ({ page
         return [0, 1, 2, 3, 6, 7, 8].map(measure);
       });
       const [own, lowerLeft, middleLeft, upperLeft, upperRight, middleRight, lowerRight] = positions;
-      const center = (r: DOMRect) => (r.top + r.bottom) / 2;
       expect(own.chip.bottom).toBeLessThan(own.cards.top);
       expect(own.cards.top - own.chip.bottom).toBeLessThanOrEqual(22);
-      for (const seat of [lowerLeft, middleLeft, lowerRight]) {
-        expect(Math.abs(center(seat.chip) - seat.frame.top)).toBeLessThanOrEqual(6);
-      }
-      for (const seat of [upperLeft, upperRight, middleRight]) {
-        expect(Math.abs(center(seat.chip) - seat.frame.bottom)).toBeLessThanOrEqual(6);
-      }
+      // Use the same frame-relative anchor for every side seat, as in the reference.
+      const upper=[upperLeft,upperRight,middleRight];
+      const lower=[lowerLeft,middleLeft,lowerRight];
+      const offsets=(seat:typeof own,upper:boolean)=>[
+        Math.max(seat.chip.left-seat.frame.right,seat.frame.left-seat.chip.right),
+        (seat.chip.top+seat.chip.bottom)/2-(upper?seat.frame.bottom:seat.frame.top),
+      ];
+      for(const seat of upper) expect(offsets(seat,true)).toEqual([5,-3]);
+      for(const seat of lower) expect(offsets(seat,false)).toEqual([5,-3]);
     }
   }
 });
@@ -198,13 +200,13 @@ test('settled results survive the reveal deadline, reload, and the next straddle
   const push = await mount(page, state);
   await expect(page.locator('.seat-payout')).toHaveCount(0);
   await expect(page.locator('.winning-seat')).not.toHaveCount(0);
-  await expect(page.locator('.table-status')).toHaveText('后续发牌已暂停');
+  await expect(page.locator('.table-phase')).toHaveText('后续发牌已暂停');
   await expect(page.locator('.reveal-card')).toHaveCount(0);
   await page.reload();
   await expect(page.locator('.seat-payout')).toHaveCount(0);
   state.phase = 'straddle'; state.straddle = state.me; state.deadline = state.server_time + 5;
   push(state);
-  await expect(page.locator('.table-status')).toContainText('UTG 选择 Straddle');
+  await expect(page.locator('.table-phase')).toContainText('UTG 选择 Straddle');
   await expect(page.locator('.seat-payout')).toHaveCount(0);
   push('preflop');
   await expect(page.locator('.seat-payout')).toHaveCount(0);
@@ -279,7 +281,8 @@ test('history separates net result from pot receipts and shows stable pot eligib
   const state = structuredClone(fixtures.twice);
   state.hand!.reveal_until = state.server_time - 1;
   await mount(page, state);
-  await page.getByRole('button', { name: '记录', exact: true }).click();
+  await page.getByRole('button', { name: '房间菜单', exact: true }).click();
+  await page.getByRole('navigation', { name: '房间菜单' }).getByRole('button', { name: '日志', exact: true }).click();
   await page.getByRole('button', { name: '手牌', exact: true }).click();
   await page.locator('.history-toggle').click();
   await expect(page.locator('.history-result-heading')).toHaveText('本手净输赢');
@@ -340,7 +343,7 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
               : rect.right <= Math.min(seat.left,cards.left) - sideGap
             : position === 5 ? rect.top >= seat.bottom
             : position === 0 ? rect.bottom <= cards.top
-            : position < 5 ? rect.left >= seat.right : rect.right <= seat.left;
+            : position < 5 ? (rect.left+rect.right)/2 > (seat.left+seat.right)/2 : (rect.left+rect.right)/2 < (seat.left+seat.right)/2;
           const peers = innerWidth > 760
             ? {0:1,1:0,2:9,9:2,3:8,8:3,4:7,7:4,5:6,6:5}
             : {1:9,9:1,2:8,8:2,3:7,7:3,4:6,6:4};
@@ -348,7 +351,7 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
           const peer = document.querySelector(`.position-${peerPosition} .seat-bet`);
           const peerRect = peer?.getBoundingClientRect();
           const aligned = !peerRect || (innerWidth <= 760
-            ? Math.abs((rect.top + rect.bottom) / 2 - (peerRect.top + peerRect.bottom) / 2) <= 1
+            ? Math.abs((rect.top+rect.bottom)/2 - (peerRect.top+peerRect.bottom)/2) <= 1
             : Math.abs(rect.top - peerRect.top) <= 1);
           const collisions = [...blockers, ...badges.slice(index + 1)].filter(other => {
             const otherRect = other.getBoundingClientRect();
@@ -388,7 +391,8 @@ test('table actions and full street amounts fit nine seats at desktop and mobile
   }
   await page.setViewportSize({ width: 1440, height: 960 });
   push(initial);
-  await page.getByRole('button', { name: '记录', exact: true }).click();
+  await page.getByRole('button', { name: '房间菜单', exact: true }).click();
+  await page.getByRole('navigation', { name: '房间菜单' }).getByRole('button', { name: '日志', exact: true }).click();
   await expect(page.locator('.side-panel')).toBeInViewport();
   await page.locator('.side-panel').getByRole('button', { name: '关闭侧栏', exact: true }).click();
   await expect(page.locator('.side-panel')).not.toBeInViewport();
@@ -498,7 +502,8 @@ test("nine tied winners highlight only the board, remain inspectable in history,
     const controls = await page.locator(".action-bar").boundingBox();
     expect(hint!.y + hint!.height).toBeLessThanOrEqual(controls!.y);
   }
-  await page.getByRole("button", { name: "记录", exact: true }).click();
+  await page.getByRole('button', { name: '房间菜单', exact: true }).click();
+  await page.getByRole('navigation', { name: '房间菜单' }).getByRole('button', { name: '日志', exact: true }).click();
   await page.getByRole("button", { name: "手牌", exact: true }).click();
   await page.locator(".history-toggle").click();
   await expect(page.locator(".history-pot-result .winning-hand")).toHaveCount(9);
@@ -988,5 +993,51 @@ test('settled stacks remain readable at all breakpoints without payout capsules'
       return stack.left < bounds.left - 1 || stack.right > bounds.right + 1 ? ['stack overflows row'] : [];
     }));
     expect(issues, `${width}px`).toEqual([]);
+  }
+});
+
+
+test('mobile and desktop show all table states only in the upper-left toolbar', async ({ page }) => {
+  const base=structuredClone(fixtures.table_actions);
+  const push=await mount(page,base);
+  const cases: [string, string | RegExp, Partial<Room>][] = [
+    ['waiting','等待房主开局',{started:false}],
+    ['waiting','等待玩家入座',{started:true}],
+    ['betting','牌局进行中',{}],
+    ['betting','本手结束后暂停',{paused:true}],
+    ['between','后续发牌已暂停',{paused:true}],
+    ['dealing','正在发公共牌',{}],
+    ['action_hold','本轮行动结束',{}],
+    ['straddle',/^UTG 选择 Straddle · \d+s$/,{}],
+    ['runout',/^发两次牌？ · \d+s$/,{}],
+    ['rebuy',/^等待重买入 · \d+s$/,{}],
+    ['between',/^下一手 · \d+s$/,{}],
+    ['betting','等待房主恢复游戏',{recovery:true}],
+    ['closed','房间已结束',{closed_at:base.server_time}],
+  ];
+  for (const width of [390,1440]) {
+    await page.setViewportSize({width,height:844});
+    for (const [phase,label,overrides] of cases) {
+      const state=structuredClone(base);
+      Object.assign(state,{phase,paused:false,recovery:false,closed_at:null,rebuy:[],deadline:state.server_time+30},overrides);
+      state.hand!.presentation=null; state.hand!.runout_result=[]; state.hand!.clock=null;
+      state.hand!.result=phase==='between'?[]:null;
+      push(state);
+      const status=page.locator('.table-toolbar .table-phase');
+      await expect(status).toHaveText(label);
+      await expect(status).toBeVisible();
+      await expect(page.locator('.table-stage .table-status, .table-stage .table-phase')).toHaveCount(0);
+      const rect=await status.boundingBox(); const table=await page.locator('.table-stage').boundingBox();
+      expect(rect!.y+rect!.height).toBeLessThanOrEqual(table!.y);
+      expect(await status.evaluate(e=>e.scrollWidth<=e.clientWidth)).toBeTruthy();
+    }
+    const settled=structuredClone(fixtures.tie);
+    settled.hand!.presentation!.until=settled.server_time+30;
+    settled.rebuy=[]; push(settled);
+    await expect(page.locator('.table-phase')).toHaveText('正在派彩');
+    const dealing=structuredClone(base); dealing.paused=false; dealing.phase='dealing';
+    dealing.hand!.presentation=null; dealing.hand!.runout_result=[]; push(dealing);
+    await expect(page.locator('.table-phase')).toHaveText('正在发公共牌');
+    await page.screenshot({path:`artifacts/table-status-toolbar-${width}.png`});
   }
 });

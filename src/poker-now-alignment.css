@@ -1,3 +1,5 @@
+.room-shell .table-phase { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* The table owns the screen; only individual controls float over it. */
 .room-shell .room-main { flex: 1; min-height: 0; }
 .room-shell .play-area { padding-bottom: 82px; }
@@ -117,12 +119,12 @@
 .room-shell .seat-bet { z-index: 5; }
 
 @media (max-width: 760px) {
-  /* 360 x 800 is the content floor, not a device size. Only room-main scrolls. */
+  /* Keep readable cards; shorter viewports scroll only the table. */
   .room-shell .room-main { overflow: auto; overscroll-behavior: contain; }
   .room-shell .play-area { min-width: 360px; flex-shrink: 0; padding: 0; }
   .room-shell .table-action-clearance {
     display: block;
-    flex: 0 0 calc(144px + env(safe-area-inset-bottom));
+    flex: 0 0 calc(74px + env(safe-area-inset-bottom));
     pointer-events: none;
   }
   .room-shell .table-stage,
@@ -130,11 +132,16 @@
   .room-shell .table-stage:has(.seat-bet.large-bet),
   .room-shell .table-stage:has(.seat-wrap.large-amounts) {
     min-width: 360px;
-    min-height: 800px;
+    min-height: 625px;
     max-height: none;
     width: 100%;
     max-width: 480px;
-    flex: 1 0 800px;
+    flex: 1 0 625px;
+  }
+  /* A visible side-pot row and wrapped large bets need one extra central row. */
+  .room-shell .table-stage:has(.side-pots):has(.seat-bet.large-bet) {
+    min-height: 656px;
+    flex-basis: 656px;
   }
   .room-shell .table-stage .seat-wrap,
   .room-shell .table-stage .seat-wrap[class*="position-"] {
@@ -196,7 +203,7 @@
   .room-shell .table-stage:not(.showing-result) .table-center,
   .room-shell .table-stage.showing-result .table-center,
   .room-shell .table-stage:has(.seat-wrap.large-amounts) .table-center {
-    top: 50%; width: calc(100% - 36px); gap: 7px;
+    top: calc(50% + 5px); width: calc(100% - 36px); gap: 3px;
   }
   .room-shell .boards .playing-card { width: 48px; }
   .room-shell .boards .playing-card > b,
@@ -279,8 +286,6 @@
   .room-shell .reveal-actions .reveal-all { min-height: 48px; height: 48px; font-size: 12px; }
   .room-shell .reveal-countdown { font-size: 11px; }
 }
-
-
 /* Desktop: two seats at each end, three on each side of the ellipse. */
 @media (min-width: 761px) {
   .room-shell .room-main { overflow: auto; overscroll-behavior: contain; }
@@ -353,4 +358,59 @@
     height: 18px;
     transform: translate(-50%, -50%);
   }
+}
+
+/* Compact mobile chrome and fixed-size player groups anchored to each end. */
+.room-menu-rules { display: block; margin-top: 5px; font-weight: normal; }
+.mobile-rule-chip, .room-shell .mobile-bubble-trigger { display: none; }
+@media (max-width: 760px) {
+  .room-shell .room-header { height: 48px; flex: 0 0 48px; }
+  .room-shell .room-menu { top: 48px; }
+  .room-shell .room-menu-backdrop { top: 48px; }
+  .room-shell .side-panel { top: 48px; height: calc(100dvh - 48px); }
+  .room-shell .mobile-bubble-trigger { display: inline-flex; }
+  .room-shell .bounty-status, .room-shell .squid-status,
+  .room-shell .action-bar .dock-log, .room-shell .action-bar .interaction-trigger { display: none; }
+  .room-shell .action-bar .interaction-picker {
+    top: 52px; bottom: auto; left: auto; right: 8px;
+    max-height: calc(100dvh - 64px); overflow-y: auto;
+  }
+  .room-shell .room-info { gap: 5px; }
+  .room-shell .room-info > div:first-child { flex: 1; overflow: hidden; }
+  .room-shell .room-info h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .room-shell .room-meta { gap: 5px; min-width: 0; max-width: 100%; }
+  .room-shell .room-meta > .rule-tag { display: none; }
+  .room-shell .short-deck-tag { white-space: nowrap; }
+  .room-shell .mobile-rule-chip {
+    display: inline-flex; align-items: center; gap: 2px; flex-shrink: 1; min-width: 30px;
+    max-width: 94px; height: 28px; min-height: 28px; padding: 0 3px;
+    border: 1px solid #5b5e5a; border-radius: 5px; background: #343937;
+    color: #e7e8e5; font-size: 10px; white-space: nowrap;
+  }
+  .room-shell .mobile-rule-chip span { overflow: hidden; text-overflow: ellipsis; }
+  .room-shell .mobile-rule-chip b { color: #ffd77a; }
+
+  .room-shell .pot-capsule { padding: 2px 8px; }
+  .room-shell .pot-capsule strong { font-size: 20px; line-height: 24px; }
+  .room-shell .table-stage :is(.position-0, .position-5) .dealer { left: -21px !important; }
+  .room-shell .table-stage .seat-wrap:not(.position-0):not(.position-5) .dealer { left: calc(100% + 2px) !important; }
+  .room-shell .table-stage .seat-wrap:is(.position-6,.position-7,.position-8,.position-9) .dealer { left: -20px !important; }
+
+  .room-shell .table-center .boards { margin: 0; }
+}
+
+@media (max-width: 760px) {
+  /* All eight side positions share the same gap, corner anchor and transform. */
+  .room-shell .table-stage .seat-wrap .seat-bet { padding-inline: 4px; }
+  .room-shell .table-stage .seat-wrap:is(.position-1,.position-2,.position-3,.position-4) .seat-bet { left: calc(100% + 5px) !important; }
+  .room-shell .table-stage .seat-wrap:is(.position-6,.position-7,.position-8,.position-9) .seat-bet { right: calc(100% + 5px) !important; }
+  .room-shell .table-stage .seat-wrap:not(.position-0):not(.position-5) .seat-bet {
+    max-width: 38px; transform: translateY(-50%) !important;
+  }
+  .room-shell .table-stage .seat-wrap:is(.position-3,.position-4,.position-6,.position-7) .seat-bet { top: calc(100% - 3px) !important; }
+  .room-shell .table-stage .seat-wrap:is(.position-1,.position-2,.position-8,.position-9) .seat-bet { top: -3px !important; }
+  .room-shell .table-stage .seat-wrap:is(.position-0,.position-5) .seat-bet { max-width: 56px; }
+  .room-shell .table-stage .seat-wrap .seat-bet wbr { display: inline; }
+  .room-shell .table-stage .seat-wrap:is(.position-3,.position-4,.position-6,.position-7) .dealer { top: 0 !important; }
+  .room-shell .table-stage .seat-wrap:is(.position-1,.position-2,.position-8,.position-9) .dealer { top: 26px !important; }
 }

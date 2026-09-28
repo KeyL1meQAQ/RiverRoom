@@ -150,7 +150,8 @@ test('live owner switches both ways while players and observer keep current hand
     expect(ordinary.history.map((hand: { short_deck: boolean }) => hand.short_deck)).toEqual([false, true]);
     await owner.reload();
     await expect(owner.locator('.short-deck-status')).toContainText('本手：普通');
-    await owner.getByRole('button', { name: '记录', exact: true }).click();
+    await owner.getByRole('button', { name: '房间菜单', exact: true }).click();
+    await owner.getByRole('navigation', { name: '房间菜单' }).getByRole('button', { name: '日志', exact: true }).click();
     await owner.getByRole('button', { name: '手牌', exact: true }).click();
     await expect(owner.locator('.history-toggle').first()).toContainText('短牌');
     await expect(owner.locator('.history-toggle').nth(1)).toContainText('普通');

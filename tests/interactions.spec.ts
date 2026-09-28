@@ -24,7 +24,8 @@ test("seated players can send transient bubbles and throws across desktop and mo
     await b.getByLabel("昵称", { exact: true }).fill("客人");
     await b.getByLabel("买入筹码").fill("200");
     await b.getByRole("button", { name: "提交入座申请" }).click();
-    await a.getByRole("button", { name: "记录" }).click();
+    await a.getByRole('button', { name: '房间菜单', exact: true }).click();
+    await a.getByRole('navigation', { name: '房间菜单' }).getByRole('button', { name: '日志', exact: true }).click();
     await a.getByRole("button", { name: "管理", exact: true }).click();
     await a.getByRole("button", { name: "批准 客人" }).click();
     await a.locator(".side-panel").getByRole("button", { name: "关闭侧栏" }).click();
@@ -76,7 +77,8 @@ test("seated players can send transient bubbles and throws across desktop and mo
     await b.getByLabel("昵称", { exact: true }).fill("客人");
     await b.getByLabel("买入筹码").fill("200");
     await b.getByRole("button", { name: "提交入座申请" }).click();
-    await a.getByRole("button", { name: "记录" }).click();
+    await a.getByRole('button', { name: '房间菜单', exact: true }).click();
+    await a.getByRole('navigation', { name: '房间菜单' }).getByRole('button', { name: '日志', exact: true }).click();
     await a.getByRole("button", { name: "管理", exact: true }).click();
     await a.getByRole("button", { name: "批准 客人" }).click();
     await expect(b.locator(".seat.occupied")).toHaveCount(2);

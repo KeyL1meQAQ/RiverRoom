@@ -78,7 +78,7 @@ test('midhand settings send squid fields and show effective and pending rules', 
 test('held funds and return without duplicate buyin are clear on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await mount(page, fixtures.held);
-  await page.locator('.squid-tag').click();
+  await page.locator('.squid-tag:visible, .mobile-rule-chip[aria-label^="鱿鱼游戏"]:visible').click();
   await expect(page.locator('.squid-details')).toContainText('已离座 · 待结算筹码');
   await page.screenshot({ path: 'artifacts/squid-held-320.png', fullPage: true });
   await page.getByRole('button', { name: '关闭', exact: true }).click();
@@ -94,7 +94,7 @@ test('round payout includes departed players, and notification never replays on 
   await expect(page.locator('.squid-celebration')).toBeVisible({ timeout: 10000 });
   await expect(page.locator('.squid-payment')).toContainText('支付 20');
   await expect(page.locator('.squid-notice')).toContainText('第 1 轮已结算', { timeout: 10000 });
-  await page.locator('.squid-tag').click();
+  await page.locator('.squid-tag:visible, .mobile-rule-chip[aria-label^="鱿鱼游戏"]:visible').click();
   await expect(page.locator('.squid-settlement')).toContainText(fixtures.settled.players.find(p => p.id === fixtures.settled.me)!.name);
   await expect(page.locator('.squid-settlement')).toContainText('实付 20 / 应付 20');
   await page.screenshot({ path: 'artifacts/squid-settlement.png', fullPage: true });
@@ -127,7 +127,8 @@ test('real two-browser hand awards a squid and settles without an extra buyin', 
     await b.getByLabel('昵称', { exact: true }).fill('客人');
     await b.getByLabel('买入筹码', { exact: true }).fill('100');
     await b.getByRole('button', { name: '提交入座申请' }).click();
-    await a.getByRole('button', { name: '记录', exact: true }).click();
+    await a.getByRole('button', { name: '房间菜单', exact: true }).click();
+    await a.getByRole('navigation', { name: '房间菜单' }).getByRole('button', { name: '日志', exact: true }).click();
     await a.getByRole('button', { name: '管理', exact: true }).click();
     await a.getByRole('button', { name: '批准 客人', exact: true }).click();
     await a.locator('.side-panel').getByRole('button', { name: '关闭侧栏', exact: true }).click();

@@ -72,7 +72,8 @@ test("folded player reveals one card then all, visible to observer, window expir
     expect(await host.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
     await expect(controls).toHaveCount(0, { timeout: 7000 });
     expect((await state()).number).toBe(1);
-    await observer.getByRole("button", { name: "记录", exact: true }).click();
+    await observer.getByRole('button', { name: '房间菜单', exact: true }).click();
+    await observer.getByRole('navigation', { name: '房间菜单' }).getByRole('button', { name: '日志', exact: true }).click();
     await observer.getByRole("button", { name: "手牌", exact: true }).click();
     await observer.locator(".history-toggle").click();
     await expect(observer.locator(".history-player .playing-card:not(.back)")).toHaveCount(2);

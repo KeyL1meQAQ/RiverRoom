@@ -70,13 +70,19 @@ test('badge counts stay integrated, update live, and explain exact totals and pa
   await expect(own.locator('.achievement-badge')).toHaveClass(/busts/);
 });
 
-test('nine-seat badges fit cards, player information, and action capsules at all widths', async ({ page }) => {
+test('ten-seat badges fit cards, player information, and action capsules at all widths', async ({ page }) => {
   const initial = structuredClone(fixtures.table_actions);
   const push = await mount(page, initial);
-  for (const [width, height] of [[320, 568], [360, 740], [390, 844], [760, 960], [761, 960], [1440, 960]]) {
+  for (const [width, height] of [[320, 568], [360, 740], [390, 844], [440, 800], [760, 960], [761, 960], [1440, 960]]) {
     await page.setViewportSize({ width, height });
     for (const scenario of ['table_actions', 'tie', 'nine_twice', 'large_result']) {
       const state = structuredClone(fixtures[scenario === 'large_result' ? 'nine_twice' : scenario]);
+      if (state.phase === 'rebuy') { state.phase = 'between'; state.rebuy = []; }
+      const extra = structuredClone(state.players.find(p => p.seat === 8)!);
+      Object.assign(extra, { id: 'tenth-badge-player', seat: 9, name: '第十位玩家' });
+      state.players.push(extra);
+      state.hand!.ids.push(extra.id); state.hand!.seats.push(9);
+      state.hand!.cards[extra.id] = [...extra.cards];
       state.players.forEach((p, i) => {
         p.achievements = { wins: 0, busts: 0 }; p.squid_count = null;
         p.name = i === 0 ? '长昵称测试玩家十二号' : p.name;
@@ -86,6 +92,8 @@ test('nine-seat badges fit cards, player information, and action capsules at all
       if (scenario === 'large_result') state.hand!.result!.forEach(r => { if (r.won) r.won = 987654321; });
       push(state);
       await expect(page.locator('.achievement-badges')).toHaveCount(0);
+      const stageBeforeBadges = await page.locator('.table-stage').boundingBox();
+      const seatPositions = await page.locator('.seat-wrap').evaluateAll(es => es.map(e => e.getBoundingClientRect().toJSON()));
       const frameHeights = await page.locator('.seat.occupied').evaluateAll(seats => seats.map(seat => seat.getBoundingClientRect().height));
       const cardPositions = await page.locator('.seat-wrap:has(.occupied)').evaluateAll(wraps => wraps.map(wrap => {
         const card = wrap.querySelector('.hole-cards')!.getBoundingClientRect();
@@ -96,7 +104,10 @@ test('nine-seat badges fit cards, player information, and action capsules at all
         wrap.querySelector('.hole-cards')!.getBoundingClientRect().top - wrap.querySelector('.seat')!.getBoundingClientRect().top));
       state.players.forEach((p, i) => { p.achievements = { wins: i % 2 ? 99 : 100, busts: i % 2 ? 100 : 99 }; p.squid_count = i % 3; });
       push(state);
-      await expect(page.locator('.achievement-badges')).toHaveCount(9);
+      await expect(page.locator('.achievement-badges')).toHaveCount(10);
+      await expect(page.locator('.achievement-badge')).toHaveCount(30);
+      expect(await page.locator('.table-stage').boundingBox(), `badge counts must not resize the ${width}px table in ${scenario}`).toEqual(stageBeforeBadges);
+      expect(await page.locator('.seat-wrap').evaluateAll(es => es.map(e => e.getBoundingClientRect().toJSON())), 'badges must not move any player').toEqual(seatPositions);
       expect(await page.locator('.seat.occupied').evaluateAll(seats => seats.map(seat => seat.getBoundingClientRect().height))).toEqual(frameHeights);
       expect(await page.locator('.seat-wrap:has(.occupied)').evaluateAll(wraps => wraps.map(wrap =>
         wrap.querySelector('.hole-cards')!.getBoundingClientRect().top - wrap.querySelector('.seat')!.getBoundingClientRect().top)),
@@ -106,7 +117,7 @@ test('nine-seat badges fit cards, player information, and action capsules at all
         const frame = wrap.querySelector('.seat')!.getBoundingClientRect();
         return [card.left - frame.left, card.top - frame.top];
       })), 'badges must not displace hole cards in either direction').toEqual(cardPositions);
-      await page.screenshot({ path: `artifacts/badges-corner-index-${scenario}-${width}.png`, fullPage: true });
+      await page.screenshot({ path: `artifacts/badges-ten-seat-${scenario}-${width}.png`, fullPage: true });
       const issues = await page.evaluate(() => {
         const visible = (el: Element) => el.getBoundingClientRect().width > 0 && getComputedStyle(el).visibility !== 'hidden';
         const intersects = (a: DOMRect, b: DOMRect) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
@@ -146,6 +157,15 @@ test('nine-seat badges fit cards, player information, and action capsules at all
             ...digits.map(() => `${owner}: count overflows badge`),
             ...(bounds.right > stage.right || bounds.left < stage.left ? [`${owner}: outside table canvas`] : [])];
         });
+        const badges = [...document.querySelectorAll('.achievement-badges')];
+        for (const badge of badges) {
+          const own = badge.closest('.seat-wrap');
+          for (const other of document.querySelectorAll('.seat, .achievement-badges')) {
+            if (other.closest('.seat-wrap') !== own && intersects(badge.getBoundingClientRect(), other.getBoundingClientRect())) {
+              issues.push(`${own!.className}: badge overlaps another player's frame or badges`);
+            }
+          }
+        }
         const frames = [...document.querySelectorAll('.seat.occupied')];
         const cards = [...document.querySelectorAll('.hole-cards .playing-card')];
         for (const card of cards) {
@@ -169,6 +189,19 @@ test('nine-seat badges fit cards, player information, and action capsules at all
       });
       expect.soft(issues, `${scenario} at ${width}`).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+      if (width === 440 || width === 1440) {
+        // Geometry alone does not detect a higher layer covering the badge.
+        const hitTest = await page.addStyleTag({ content: '.achievement-badges, .achievement-badges * { pointer-events:auto !important; }' });
+        for (const badge of await page.locator('.achievement-badge').all()) {
+          await badge.evaluate(el => el.scrollIntoView({ block: 'center', inline: 'center' }));
+          expect(await badge.evaluate(el => {
+            const r=el.getBoundingClientRect();
+            return [r.left+2, r.left+r.width/2, r.right-2].every(x => el.contains(document.elementFromPoint(x, r.top+r.height/2)));
+          }), await badge.getAttribute('aria-label') || '').toBeTruthy();
+        }
+        await hitTest.evaluate(el => el.remove());
+        await page.locator('.room-main').evaluate(el => el.scrollTo(0,0));
+      }
     }
   }
 });

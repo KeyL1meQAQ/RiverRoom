@@ -49,7 +49,8 @@ test("multi-browser room, approval, playing, refresh and recovery", async ({
   await b.getByLabel("买入筹码").fill("200");
   await b.getByRole("button", { name: "提交入座申请" }).click();
   await expect(b.locator(".action-content")).toContainText("等待房主审批");
-  await a.getByRole("button", { name: "记录", exact: true }).click();
+  await a.getByRole('button', { name: '房间菜单', exact: true }).click();
+  await a.getByRole('navigation', { name: '房间菜单' }).getByRole('button', { name: '日志', exact: true }).click();
   await a.getByRole("button", { name: "管理", exact: true }).click();
   await a.getByRole("button", { name: "批准 小满", exact: true }).click();
   await a.locator('.side-panel').getByRole('button', { name: '关闭侧栏', exact: true }).click();

@@ -3485,16 +3485,9 @@ dialog::backdrop {
 @media (max-width: 760px) {
   .achievement-badges { top: -8px; bottom: auto; right: -1px; height: 12px; gap: 2px; flex-direction: row; }
   .achievement-badge { width: 12px; height: 12px; }
-  .table-stage.showing-result:has(.achievement-badges):not(:has(.large-amounts)) { min-height: 640px; max-height: none; }
-  .table-stage.showing-result.double-board:has(.achievement-badges):not(:has(.large-amounts)) { min-height: 680px; max-height: none; }
 }
 @media (max-width: 380px) {
   .seat-wrap:not(.own-seat) > .achievement-badges { right: -3px; }
-}
-@media (min-width: 761px) and (max-width: 1100px) {
-  .table-stage.showing-result:has(.achievement-badges) { min-height: 800px; max-height: none; }
-  .table-stage.showing-result:has(.achievement-badges) .position-4,
-  .table-stage.showing-result:has(.achievement-badges) .position-5 { top: 6%; }
 }
 
 .result-scroll-hint { display: none; }

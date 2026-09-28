@@ -639,7 +639,7 @@ function ResultScrollHint({ room, now }: { room: Room; now: number }) {
     const update = () => {
       const bounds = root.getBoundingClientRect();
       const result = seat.getBoundingClientRect();
-      const visibleBottom = bounds.bottom - (window.matchMedia('(max-width: 760px)').matches ? 126 : 0);
+      const visibleBottom = Math.min(bounds.bottom, document.querySelector('.action-content')?.getBoundingClientRect().top ?? bounds.bottom) - 8;
       setOutside(window.matchMedia('(max-width: 760px)').matches &&
         (result.top < bounds.top || result.bottom > visibleBottom));
     };
@@ -658,7 +658,7 @@ function ResultScrollHint({ room, now }: { room: Room; now: number }) {
     const root = container.current, seat = target.current;
     if (!root || !seat) return;
     const bounds = root.getBoundingClientRect(), result = seat.getBoundingClientRect();
-    const visibleBottom = bounds.bottom - 126;
+    const visibleBottom = Math.min(bounds.bottom, document.querySelector('.action-content')?.getBoundingClientRect().top ?? bounds.bottom) - 8;
     root.scrollBy({ top: result.bottom > visibleBottom ? result.bottom - visibleBottom + 8 : result.top - bounds.top - 8,
       behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
   }}>查看我的结果 <ChevronDown size={12} /></button>;
@@ -718,7 +718,6 @@ function PokerTable({
   const animateWin = now < resultBaseline.current.animateUntil;
   const ownSeat = (showingHandSeats ? hand!.seats[hand!.ids.indexOf(me.id)] : undefined) ?? me.seat ?? 0;
   const playing = hand && hand.result === null;
-  const countdown = Math.max(0, Math.ceil((room.deadline || 0) - now));
   return (
     <div ref={stageRef} className={`table-stage ${showingResult || groups.length ? "showing-result" : ""}`} data-settling={settling}>
       <div className="table-rail">
@@ -761,33 +760,7 @@ function PokerTable({
             ))}
           </div>
         )}
-        <div className="table-status">
-          {room.recovery
-            ? "等待房主恢复游戏"
-            : room.closed_at
-              ? "房间已结束"
-              : room.phase === "straddle"
-                ? `UTG 选择 Straddle · ${countdown}s`
-                : room.phase === "runout"
-                  ? `发两次牌？ · ${countdown}s`
-                  : settling
-                    ? "正在派彩"
-                  : hand?.runout_result?.length
-                    ? "第 1 组结果"
-                  : room.phase === "rebuy"
-                    ? `等待重买入 · ${countdown}s`
-                    : room.paused
-                      ? playing ? "本手结束后暂停" : "后续发牌已暂停"
-                      : room.phase === "waiting"
-                        ? room.started
-                          ? "等待玩家入座"
-                          : "等待房主开局"
-                        : room.phase === "dealing"
-                          ? "正在发公共牌"
-                        : room.phase === "between"
-                          ? `下一手 · ${countdown}s`
-                          : "无限注德州扑克"}
-        </div>
+
       </div>
       {Array.from({ length: SEAT_COUNT }, (_, seat) => {
         const handPlayer = showingHandSeats ? hand!.ids[hand!.seats.indexOf(seat)] : undefined;
@@ -852,7 +825,7 @@ function PokerTable({
                 "--x": `${x}%`,
                 "--y": `${y}%`,
                 "--mx": `${mx}%`,
-                "--my": `${my}%`,
+                "--my": my,
               } as React.CSSProperties
             }
           >
@@ -916,7 +889,7 @@ function PokerTable({
               </span>
             )}
             {p && (betAmount > 0 || tableAction) && (
-              <div className={`seat-bet ${betAmount > 0 ? 'with-amount' : 'action-only'} ${tableAction === '弃牌' ? 'fold-action' : ''} ${n(betAmount).length > 5 ? 'large-bet' : ''}`}
+              <div className={`seat-bet ${betAmount > 0 ? 'with-amount' : 'action-only'} ${tableAction === '弃牌' ? 'fold-action' : tableAction === '过牌' ? 'check-action' : ''} ${n(betAmount).length > 5 ? 'large-bet' : ''}`}
                 aria-label={`${p.name} ${tableAction || '下注'}${betAmount > 0 ? ` ${n(betAmount)}` : ''}`}
                 title={betAmount > 0 ? `${tableAction || '下注'} ${n(betAmount)}` : tableAction}>
                 {betAmount === 0 && tableAction && <span className="bet-action">{tableAction}</span>}
@@ -1253,6 +1226,17 @@ function RoomScreen({
   const burstDisabled = interactionUnavailable || interactionNow - interactionSent.burst < 10;
   const awaiting = room.requests.find((r) => r.pid === room.me);
   const countdown = Math.max(0, Math.ceil((room.deadline || 0) - now));
+  const tableStatus = room.recovery ? "等待房主恢复游戏"
+    : room.closed_at ? "房间已结束"
+    : room.phase === "straddle" ? `UTG 选择 Straddle · ${countdown}s`
+    : room.phase === "runout" ? `发两次牌？ · ${countdown}s`
+    : presentationActive ? "正在派彩"
+    : hand?.runout_result?.length ? "第 1 组结果"
+    : room.phase === "rebuy" ? `等待重买入 · ${countdown}s`
+    : room.paused ? active ? "本手结束后暂停" : "后续发牌已暂停"
+    : room.phase === "waiting" ? room.started ? "等待玩家入座" : "等待房主开局"
+    : room.phase === "between" ? `下一手 · ${countdown}s`
+    : phases[room.phase];
   const needsRebuy = !presentationActive && room.phase === "rebuy" && room.rebuy.includes(me.id);
   const openSeat = (s: number) => {
     setSeat(s);
@@ -1330,6 +1314,9 @@ function RoomScreen({
           </div>
         </div>
         <div className="header-right">
+          {me.seat !== null && !room.closed_at && <IconButton title="发送气泡"
+            className={`mobile-bubble-trigger ${bubbleOpen ? "active" : ""}`}
+            disabled={status !== "connected"} onClick={() => setBubbleOpen(value => !value)}><SmilePlus size={18} /></IconButton>}
           {me.seat !== null && !room.closed_at && <>
             <IconButton title="离座" disabled={me.leave || busy} onClick={() => setModal("leave")}>
               <LogOut size={21} />
@@ -1367,7 +1354,9 @@ function RoomScreen({
         {roomMenuOpen && <>
           <button className="room-menu-backdrop" aria-label="关闭房间菜单" onClick={() => setRoomMenuOpen(false)} />
           <nav className="room-menu" aria-label="房间菜单">
-            <span className="room-menu-heading">{room.name}</span>
+            <span className="room-menu-heading">{room.name}
+              <small className="room-menu-rules">盲注 {room.settings.sb}/{room.settings.bb}{room.settings.twice && ' · 允许发两次'}{room.settings.straddle && ' · UTG Straddle'}</small>
+            </span>
             <button onClick={() => { setModal("share"); setRoomMenuOpen(false); }}><Link size={17} />邀请朋友</button>
             <button onClick={() => { setModal("identity"); setRoomMenuOpen(false); }}><KeyRound size={17} />房间身份</button>
             {me.seat !== null && !room.closed_at && <button disabled={!!awaiting || busy} onClick={() => { openTopup(); setRoomMenuOpen(false); }}><Coins size={17} />补码</button>}
@@ -1401,6 +1390,14 @@ function RoomScreen({
             {room.players.filter((p) => p.seat !== null).length}/10
           </span>
           <span className="desktop-only">第 {room.number} 手</span>
+          {(currentBounty.enabled || pendingBounty) && <button className="mobile-rule-chip" onClick={() => setModal('bounty-rules')}
+            aria-label={`2–7 奖励${pendingBounty ? '，下一手有变更' : ''}`}>
+            <span>2–7 · {currentBounty.enabled ? n(currentBounty.amount || 0) : '关'}</span>{pendingBounty && <b aria-hidden="true">•</b>}
+          </button>}
+          {(currentSquid.enabled || pendingSquid || !!room.squid_history?.length) && <button className="mobile-rule-chip" onClick={() => setModal('squid')}
+            aria-label={`鱿鱼游戏${pendingSquid ? '，下一手有变更' : ''}`}>
+            <span>🦑 {currentSquid.enabled ? squidRound ? `${squidRound.members.reduce((sum, m) => sum + m.count, 0)}/${squidRound.total}` : '等待' : '记录'}</span>{pendingSquid && <b aria-hidden="true">•</b>}
+          </button>}
           {room.settings.twice && <span className="rule-tag">发两次</span>}
           {room.settings.straddle && <span className="rule-tag">UTG</span>}
         </div>
@@ -1440,13 +1437,7 @@ function RoomScreen({
             <span
               className={`phase-dot ${room.paused || room.recovery ? "paused" : ""}`}
             />
-            <span>
-              {room.recovery
-                ? "恢复暂停"
-                : room.paused
-                  ? "后续发牌已暂停"
-                  : presentationActive ? '正在派彩' : phases[room.phase]}
-            </span>
+            <span className="table-phase" title={tableStatus}>{tableStatus}</span>
             <ResultScrollHint room={room} now={now} />
             <span className="toolbar-spacer" />
             <IconButton title={hideInteractions ? "显示互动" : "隐藏互动"} onClick={toggleInteractions}>
@@ -2252,8 +2243,14 @@ function RoomScreen({
           </form>
         </Modal>
       )}
-      {modal === 'squid' && <Modal title="鱿鱼游戏" close={() => setModal(null)}><SquidDetails room={room} /></Modal>}
-      {modal === 'bounty-rules' && <Modal title="2–7 杂色奖励规则" close={() => setModal(null)}><BountyRules /></Modal>}
+      {modal === 'squid' && <Modal title="鱿鱼游戏" close={() => setModal(null)}>
+        <p>{currentSquid.enabled ? `当前每个 ${n(currentSquid.amount || 0)} 筹码 · ${currentSquid.reveal ? '自动亮牌' : '不额外亮牌'}` : '当前鱿鱼已关闭'}</p>
+        {pendingSquid && <p role="status">下一手{room.settings.squid ? `开启 · 单价 ${n(room.settings.squid_amount || 0)} · ${room.settings.squid_reveal ? '自动亮牌' : '不额外亮牌'}` : '关闭鱿鱼，未完成轮次作废'}</p>}
+        <SquidDetails room={room} /></Modal>}
+      {modal === 'bounty-rules' && <Modal title="2–7 杂色奖励规则" close={() => setModal(null)}>
+        <p>{currentBounty.enabled ? `当前奖励 · 每人 ${n(currentBounty.amount || 0)} 筹码` : '本手2–7奖励关闭'}</p>
+        {pendingBounty && <p role="status">下一手{room.settings.bounty ? `开启2–7奖励 · 每人 ${n(room.settings.bounty_amount || 0)}` : '关闭2–7奖励'}{room.phase === 'straddle' && '（正在询问 Straddle 的一手保持原规则）'}</p>}
+        <BountyRules /></Modal>}
       {modal === 'short-deck-rules' && <Modal title="短牌规则" close={() => setModal(null)}><ShortDeckRules /></Modal>}
       {modal === "player" && target && (
         <Modal title={target.name} close={() => setModal(null)}>

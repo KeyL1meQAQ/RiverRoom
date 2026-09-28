@@ -196,7 +196,8 @@
 }
 .room-shell .seat-wrap.large-amounts .seat.occupied { min-height: 83px; }
 .room-shell .seat-bet { background: #f1ff59; border: 0; border-radius: 999px; color: #182018; box-shadow: 0 2px 7px #092b1c70; }
-.room-shell .seat-bet.fold-action { background: #f5f5f3; }
+.room-shell .seat-bet.check-action { background: #fff; }
+.room-shell .seat-bet.fold-action { background: #a3a3a3; }
 .room-shell .seat-bet .bet-action,
 .room-shell .seat-bet .bet-amount { color: #1e211d; font-weight: 800; }
 .room-shell .dealer { background: #f6f6f3; color: #4470bc; border: 1px solid #fff; box-shadow: 0 2px 4px #14261d88; }

@@ -57,7 +57,7 @@ export function ThrowPicker({ target, send, singleDisabled, burstDisabled }: {
   </div>;
 }
 
-function positionFor(room: Room, ownSeat: number, pid: string, positions: number[][]) {
+function positionFor<T>(room: Room, ownSeat: number, pid: string, positions: T[]) {
   const seat = room.players.find(player => player.id === pid)?.seat;
   return seat == null ? null : positions[relativeSeat(seat, ownSeat)];
 }
@@ -67,7 +67,7 @@ export function InteractionLayer({ room, ownSeat, events, desktop, mobile }: {
   ownSeat: number;
   events: InteractionEvent[];
   desktop: number[][];
-  mobile: number[][];
+  mobile: [number, string][];
 }) {
   return <>
     {events.filter(event => event.kind === "bubble").map(event => {
@@ -77,7 +77,7 @@ export function InteractionLayer({ room, ownSeat, events, desktop, mobile }: {
       return <div className={`table-bubble position-${position} ${EMOJI.includes(event.preset) ? "emoji" : ""} ${position >= 3 && position <= 7 ? "below" : ""}`}
         key={event.id} role="status" style={{
           "--bubble-x": `${desktop[position][0]}%`, "--bubble-y": `${desktop[position][1]}%`,
-          "--bubble-mobile-x": `${mobile[position][0]}%`, "--bubble-mobile-y": `${mobile[position][1]}%`,
+          "--bubble-mobile-x": `${mobile[position][0]}%`, "--bubble-mobile-y": mobile[position][1],
         } as React.CSSProperties}>{event.preset}</div>;
     })}
     {events.filter(event => event.kind === "throw").flatMap(event => {
@@ -92,8 +92,8 @@ export function InteractionLayer({ room, ownSeat, events, desktop, mobile }: {
         key={`${event.id}:${index}`} className="throw-flight" aria-hidden="true" style={{
           "--from-x": `${from[0]}%`, "--from-y": `${from[1]}%`,
           "--to-x": `${to[0]}%`, "--to-y": `${to[1]}%`,
-          "--mobile-from-x": `${mobileFrom[0]}%`, "--mobile-from-y": `${mobileFrom[1]}%`,
-          "--mobile-to-x": `${mobileTo[0]}%`, "--mobile-to-y": `${mobileTo[1]}%`,
+          "--mobile-from-x": `${mobileFrom[0]}%`, "--mobile-from-y": mobileFrom[1],
+          "--mobile-to-x": `${mobileTo[0]}%`, "--mobile-to-y": mobileTo[1],
           animationDelay: `${index * .43}s`,
         } as React.CSSProperties}>{symbol}</span>);
     })}

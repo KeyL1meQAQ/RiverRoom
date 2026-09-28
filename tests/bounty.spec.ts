@@ -137,7 +137,8 @@ test('observer sees live reward, persisted payment detail and net results', asyn
   const { push } = await mount(page, before);
   push(fixtures.paid_observer);
   await expect(page.locator('.bounty-celebration')).toContainText('获得2-7奖励');
-  await page.getByRole('button', { name: '记录', exact: true }).click();
+  await page.getByRole('button', { name: '房间菜单', exact: true }).click();
+  await page.getByRole('navigation', { name: '房间菜单' }).getByRole('button', { name: '日志', exact: true }).click();
   await page.getByRole('button', { name: '手牌', exact: true }).click();
   await page.locator('.history-toggle').click();
   await expect(page.locator('.bounty-history')).toContainText('实收 10');
