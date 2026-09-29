@@ -5,12 +5,23 @@ import "./interactions.css";
 
 export const EMOJI = ["😏", "😂", "🙃", "👀", "👏", "😭", "😎", "🤔", "😅", "🤝", "😱", "🫡"];
 export const PHRASES = ["我很抱歉", "打得不错", "漂亮！", "这也敢跟？", "让我想想", "运气真好",
-  "稳住", "有点意思", "别着急", "手下留情", "你来试试", "下一手见"];
+  "稳住", "有点意思", "别着急", "手下留情", "你来试试", "下一手见",
+  "你已急哭", "急了", "真别急", "懂你意思", "真的假的", "彳亍", "对的对的", "不对不对"];
 export const ITEMS = [
   { id: "tomato", label: "番茄", symbol: "🍅" },
   { id: "egg", label: "鸡蛋", symbol: "🥚" },
   { id: "poop", label: "大便", symbol: "💩" },
 ] as const;
+
+const IMPACT_PARTICLES = Array.from({ length: 8 }, (_, index) => {
+  const angle = (index * 45 + 12) * Math.PI / 180;
+  const distance = index % 2 === 0 ? 29 : 38;
+  return {
+    "--dx": `${Math.cos(angle) * distance}px`,
+    "--dy": `${Math.sin(angle) * distance}px`,
+    "--spin": `${index % 2 === 0 ? 100 : -130}deg`,
+  } as React.CSSProperties;
+});
 
 export type InteractionEvent = (
   | { kind: "bubble"; preset: string }
@@ -89,13 +100,20 @@ export function InteractionLayer({ room, ownSeat, events, desktop, mobile }: {
       if (!from || !to || !mobileFrom || !mobileTo) return [];
       const symbol = ITEMS.find(item => item.id === event.item)?.symbol;
       return Array.from({ length: event.count }, (_, index) => <span
-        key={`${event.id}:${index}`} className="throw-flight" aria-hidden="true" style={{
+        key={`${event.id}:${index}`} className="throw-effect" aria-hidden="true" style={{
           "--from-x": `${from[0]}%`, "--from-y": `${from[1]}%`,
           "--to-x": `${to[0]}%`, "--to-y": `${to[1]}%`,
           "--mobile-from-x": `${mobileFrom[0]}%`, "--mobile-from-y": mobileFrom[1],
           "--mobile-to-x": `${mobileTo[0]}%`, "--mobile-to-y": mobileTo[1],
-          animationDelay: `${index * .43}s`,
-        } as React.CSSProperties}>{symbol}</span>);
+          "--throw-delay": `${index * .43}s`,
+        } as React.CSSProperties}>
+        <span className="throw-flight">{symbol}</span>
+        <span className={`throw-impact throw-impact-${event.item}`}>
+          <span className="throw-impact-core" />
+          {IMPACT_PARTICLES.map((style, particle) => <span key={particle} style={style}
+            className={`throw-impact-particle${event.item === "egg" && particle % 2 === 0 ? " throw-impact-shell" : ""}`} />)}
+        </span>
+      </span>);
     })}
   </>;
 }

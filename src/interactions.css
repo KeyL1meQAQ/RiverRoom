@@ -80,8 +80,12 @@
   border-bottom: 0;
 }
 .table-bubble.below::after { bottom: auto; top: -7px; border-top: 0; border-bottom: 6px solid #fffefb; }
-.throw-flight {
+.throw-effect {
   --fx: var(--from-x); --fy: var(--from-y); --tx: var(--to-x); --ty: var(--to-y);
+  display: contents;
+  pointer-events: none;
+}
+.throw-flight {
   position: absolute;
   left: var(--fx);
   top: var(--fy);
@@ -91,14 +95,73 @@
   pointer-events: none;
   opacity: 0;
   filter: drop-shadow(0 3px 3px #14291c70);
-  animation: throw-flight 1s ease-in both;
+  animation: throw-flight .65s ease-in both;
+  animation-delay: var(--throw-delay);
 }
 @keyframes throw-flight {
   0% { left: var(--fx); top: var(--fy); transform: translate(-50%, -50%) scale(.65) rotate(-28deg); opacity: 0; }
   12% { opacity: 1; }
   55% { transform: translate(-50%, -145%) scale(1.15) rotate(18deg); opacity: 1; }
-  85% { left: var(--tx); top: var(--ty); transform: translate(-50%, -50%) scale(1.25) rotate(42deg); opacity: 1; }
-  100% { left: var(--tx); top: var(--ty); transform: translate(-50%, -50%) scale(1.7) rotate(55deg); opacity: 0; }
+  99% { left: var(--tx); top: var(--ty); transform: translate(-50%, -50%) scale(1.25) rotate(42deg); opacity: 1; }
+  100% { left: var(--tx); top: var(--ty); transform: translate(-50%, -50%) scale(1.25) rotate(42deg); opacity: 0; }
+}
+.throw-impact {
+  --impact-color: #ee4934;
+  --impact-light: #ff9470;
+  position: absolute;
+  left: var(--tx);
+  top: var(--ty);
+  width: 80px;
+  height: 80px;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  pointer-events: none;
+}
+.throw-impact-egg { --impact-color: #ffbf20; --impact-light: #ffe37a; }
+.throw-impact-poop { --impact-color: #805035; --impact-light: #b88255; }
+.throw-impact-core, .throw-impact-particle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  opacity: 0;
+  background: var(--impact-color);
+  animation-duration: .35s;
+  animation-delay: calc(var(--throw-delay) + .65s);
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
+}
+.throw-impact-core {
+  width: 27px;
+  height: 23px;
+  border-radius: 42% 58% 36% 64% / 58% 35% 65% 42%;
+  box-shadow: inset 4px 3px 0 var(--impact-light);
+  animation-name: throw-impact-burst;
+}
+.throw-impact-particle {
+  width: 9px;
+  height: 6px;
+  border-radius: 65% 35% 55% 45%;
+  animation-name: throw-impact-scatter;
+}
+.throw-impact-egg .throw-impact-core { border: 4px solid #fff5d5; }
+.throw-impact-shell {
+  width: 12px;
+  height: 12px;
+  background: #fff9e9;
+  clip-path: polygon(0 5%, 45% 28%, 78% 0, 100% 70%, 54% 100%, 12% 78%);
+}
+.throw-impact-poop .throw-impact-particle { width: 11px; height: 10px; border-radius: 43% 57% 38% 62%; }
+@keyframes throw-impact-burst {
+  0% { transform: translate(-50%, -50%) scale(.3); opacity: 0; }
+  20% { opacity: 1; }
+  45% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(.9); opacity: 0; }
+}
+@keyframes throw-impact-scatter {
+  0% { transform: translate(-50%, -50%) scale(.3); opacity: 0; }
+  15% { opacity: 1; }
+  65% { opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--spin)) scale(.45); opacity: 0; }
 }
 @media (max-width: 760px) {
   .interaction-picker { left: auto; right: 8px; width: min(340px, calc(100vw - 16px)); }
@@ -106,10 +169,15 @@
   .table-bubble { --bx: var(--bubble-mobile-x); --by: var(--bubble-mobile-y); max-width: 114px; font-size: 11px; padding: 5px 7px; transform: translate(-50%, calc(-100% - 30px)); }
   .table-bubble.emoji { font-size: 20px; }
   .table-bubble.below { transform: translate(-50%, 29px); }
-  .throw-flight { --fx: var(--mobile-from-x); --fy: var(--mobile-from-y); --tx: var(--mobile-to-x); --ty: var(--mobile-to-y); font-size: 24px; }
+  .throw-effect { --fx: var(--mobile-from-x); --fy: var(--mobile-from-y); --tx: var(--mobile-to-x); --ty: var(--mobile-to-y); }
+  .throw-flight { font-size: 24px; }
+  .throw-impact { transform: translate(-50%, -50%) scale(.75); }
 }
 @media (prefers-reduced-motion: reduce) {
   .throw-flight { animation: throw-reduced 1s ease-in both !important; }
+  .throw-flight { animation-delay: var(--throw-delay) !important; }
+  .throw-impact { display: none; }
+  .throw-impact, .throw-impact * { animation: none !important; }
   @keyframes throw-reduced {
     0% { left: var(--tx); top: var(--ty); opacity: 0; }
     20% { opacity: 1; }
