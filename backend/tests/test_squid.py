@@ -257,9 +257,10 @@ def test_fold_award_reveal_is_optional_and_private_until_settled(reveal):
     assert (winner in game.public_hand(room['hand'], observer)['cards']) is reveal
 
 
-def test_only_first_runout_main_pot_counts(monkeypatch):
+@pytest.mark.parametrize('mode', ['classic', 'infinite'])
+def test_only_first_runout_main_pot_counts(monkeypatch, mode):
     room, ids, _ = fixed_table(monkeypatch, [('Ac', 'Ad'), ('7c', '2d'), ('Kc', 'Kd')],
-        board=('7h', '2s', '9d', 'Js', '3h'), board2=('Ah', '4s', '8d', 'Ts', '6h'), twice=True, squid=True)
+        board=('7h', '2s', '9d', 'Js', '3h'), board2=('Ah', '4s', '8d', 'Ts', '6h'), twice=True, squid=True, squid_mode=mode)
     action(room, 'raise', 100)
     action(room)
     action(room)
@@ -285,7 +286,7 @@ def test_straddle_locks_rule_and_cancellation_uses_latest():
     change(room, squid_amount=12, squid_reveal=True)
     assert game.view(room, ids[0], 1001)['squid_current']['amount'] == 5
     game.deal(room, 1002, False)
-    assert room['hand']['squid_rule'] == dict(enabled=True, amount=5, reveal=False)
+    assert room['hand']['squid_rule'] == dict(enabled=True, amount=5, reveal=False, mode='classic', multiplier=False)
     room, ids = table(squid=True, straddle=True, squid_amount=5)
     game.command(room, ids[0], dict(type='start'), 1000)
     change(room, squid_amount=12)
@@ -297,7 +298,7 @@ def test_straddle_locks_rule_and_cancellation_uses_latest():
 
 def test_defaults_permission_legacy_and_amount_validation():
     room, ids = table()
-    assert squid.rule(room['settings']) == dict(enabled=False, amount=None, reveal=False)
+    assert squid.rule(room['settings']) == dict(enabled=False, amount=None, reveal=False, mode='classic', multiplier=False)
     change(room, squid=True)
     assert room['settings']['squid_amount'] == 2
     change(room, bb=4, squid=False)
@@ -317,8 +318,9 @@ def test_defaults_permission_legacy_and_amount_validation():
     assert room['hand']['squid'] is None
 
 
-def test_squid_settlement_rollback_and_restart_are_atomic(monkeypatch, tmp_path):
-    room, ids = table((100, 100), squid=True, squid_amount=10)
+@pytest.mark.parametrize('mode', ['classic', 'infinite'])
+def test_squid_settlement_rollback_and_restart_are_atomic(monkeypatch, tmp_path, mode):
+    room, ids = table((100, 100), squid=True, squid_amount=10, squid_mode=mode)
     game.command(room, ids[0], dict(type='start'), 1000)
     store = Store(f'sqlite:///{tmp_path}/atomic.db')
     store.save(room)

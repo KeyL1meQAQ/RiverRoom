@@ -11,25 +11,30 @@ export type Config = {
   squid: boolean;
   squid_amount: number | null;
   squid_reveal: boolean;
+  squid_mode?: SquidMode;
+  squid_multiplier?: boolean;
 };
 export type BountyRule = { enabled: boolean; amount: number | null };
 export type BountyAward = {
   id: string; pid: string; name: string; amount: number; total: number; at: number;
   payments: { pid: string; name: string; amount: number }[];
 };
-export type SquidRule = { enabled: boolean; amount: number | null; reveal: boolean };
+export type SquidMode = 'classic' | 'infinite';
+export type SquidRule = { enabled: boolean; amount: number | null; reveal: boolean; mode?: SquidMode; multiplier?: boolean };
 export type SquidRound = {
+  mode?: SquidMode; multiplier?: boolean; carry?: number; hands?: number;
   number: number; total: number; amount: number; started_hand: number; at: number;
   members: { pid: string; name: string; count: number }[];
 };
 export type SquidSettlement = SquidRound & {
   id: string; status: 'settled' | 'cancelled'; reason?: string; finished_hand: number; finished_at: number;
-  results: { pid: string; name: string; count: number; before: number; after: number; delta: number }[];
+  issued?: number;
+  results: { pid: string; name: string; count: number; multiplier?: number; due?: number; before: number; after: number; delta: number }[];
   payments: { pid: string; name: string; due: number; amount: number;
     transfers: { pid: string; name: string; due: number; amount: number }[] }[];
 };
 export type SquidEvent = {
-  award: { id: string; pid: string; name: string; count: number; round: number; total: number; issued: number; at: number };
+  award: { id: string; pid: string; name: string; count: number; gained?: number; round: number; total: number; issued: number; at: number };
   settlement: SquidSettlement | null;
 };
 export type Player = {
@@ -88,6 +93,7 @@ export type Hand = {
   bounty_rule?: BountyRule;
   bounty?: BountyAward | null;
   squid_rule?: SquidRule;
+  squid_contested?: number | null;
   squid?: SquidEvent | null;
   cards: Record<string, (string | null)[]>;
   revealed: string[];
@@ -151,6 +157,7 @@ export type Room = {
   bounty_current?: BountyRule;
   squid_current?: SquidRule;
   squid_round?: SquidRound | null;
+  squid_next_contested?: number;
   squid_history?: SquidSettlement[];
   owner: string;
   phase: string;

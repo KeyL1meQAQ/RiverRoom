@@ -253,7 +253,7 @@ test('compact mobile table fits usable portrait height with both rules and reach
   await expect(page.locator('dialog')).toContainText('当前奖励 · 每人 20');
   await expect(page.locator('dialog')).toContainText('下一手开启2–7奖励 · 每人 25');
   await page.getByRole('button',{name:'关闭',exact:true}).click();
-  await page.getByRole('button',{name:'鱿鱼游戏，下一手有变更',exact:true}).click();
+  await page.getByRole('button',{name:/鱿鱼游戏.*下一手有变更/}).click();
   await expect(page.locator('dialog')).toContainText('当前每个 10');
   await expect(page.locator('dialog')).toContainText('下一手开启 · 单价 30');
   await page.getByRole('button',{name:'关闭',exact:true}).click();

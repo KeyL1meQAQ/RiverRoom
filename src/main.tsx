@@ -42,7 +42,7 @@ import { FlipNumber, SettlementLayer, settlementBalances, useMotionBaseline } fr
 import { AchievementBadges, AchievementDetails } from "./Achievements";
 import { BountyCelebration, BountyRules } from "./Bounty";
 import { ShortDeckRules } from "./ShortDeck";
-import { SquidRules, SquidDetails, SquidNotice, SquidCelebration, SquidSettlementView } from "./Squid";
+import { SquidRules, SquidDetails, SquidStatus, squidPending, SquidCelebration, SquidSettlementView } from "./Squid";
 import { SEAT_COUNT, desktopPositions, mobilePositions, relativeSeat } from "./table-layout";
 import { BubblePicker, InteractionLayer, ThrowPicker } from "./Interactions";
 import type { InteractionEvent } from "./Interactions";
@@ -62,6 +62,8 @@ const defaults: Config = {
   bounty: false,
   bounty_amount: null,
   squid: false,
+  squid_mode: 'classic',
+  squid_multiplier: false,
   squid_amount: null,
   squid_reveal: false,
 };
@@ -399,16 +401,28 @@ function ConfigFields({
             squid_amount: value.squid_amount ?? (e.target.checked ? value.bb : null) })} />
       </div>
       {value.squid && <>
-        {field('squid_amount', '鱿鱼价格 / 筹码', 1, Math.floor(Number.MAX_SAFE_INTEGER / 500))}
-        <p className="bounty-config-note">本轮最后没有鱿鱼的人，向其他每人支付此数量的筹码。中途改价也适用于本轮已获得的鱿鱼。</p>
+        <label>鱿鱼模式
+          <select aria-label="鱿鱼模式" value={value.squid_mode || 'classic'} onChange={e => change({ ...value, squid_mode: e.target.value as Config['squid_mode'] })}>
+            <option value="classic">普通鱿鱼</option><option value="infinite">无限鱿鱼</option>
+          </select>
+        </label>
+        {value.squid_mode === 'infinite' && <label className="switch-row"><span>鱿鱼倍率（3 / 5 / 7 条翻倍）</span>
+          <input type="checkbox" role="switch" checked={!!value.squid_multiplier}
+            onChange={e => change({ ...value, squid_multiplier: e.target.checked })} />
+        </label>}
+        <p className="bounty-config-note">模式和倍率开关从下一轮鱿鱼生效。</p>
+        {field('squid_amount', '鱿鱼价格 / 筹码', 1, Math.floor(Number.MAX_SAFE_INTEGER / (value.squid_mode === 'infinite' ? 500 * (SEAT_COUNT + 3) * 8 : 500)))}
+        <p className="bounty-config-note">{value.squid_mode === 'infinite'
+          ? '每名零鱿鱼者分别按对方数量 × 单价 × 个人倍率付款。'
+          : '本轮最后没有鱿鱼的人，向其他每人支付此数量的筹码。'}中途改价也适用于本轮已获得的鱿鱼。</p>
         <label className="switch-row"><span>获得鱿鱼时自动亮出两张底牌</span>
           <input type="checkbox" role="switch" checked={!!value.squid_reveal}
             onChange={e => change({ ...value, squid_reveal: e.target.checked })} />
         </label>
       </>}
-      {playing && <p className="bounty-config-note">短牌、2–7 奖励和鱿鱼设置从下一手生效，当前手（含已开始的 Straddle 询问）保持原规则。其他设置请在这手结束后修改。</p>}
+      {playing && <p className="bounty-config-note">短牌、2–7 奖励及鱿鱼开关、单价、亮牌从下一手生效；鱿鱼模式和倍率从下一轮生效，当前手（含已开始的 Straddle 询问）保持原规则。其他设置请在这手结束后修改。</p>}
       {shortDeckRules && <Modal title="短牌规则" close={() => setShortDeckRules(false)}><ShortDeckRules /></Modal>}
-      {squidRules && <Modal title="鱿鱼游戏规则" close={() => setSquidRules(false)}><SquidRules /></Modal>}
+      {squidRules && <Modal title="鱿鱼游戏规则" close={() => setSquidRules(false)}><SquidRules mode={value.squid_mode} /></Modal>}
       {rules && <Modal title="2–7 杂色奖励规则" close={() => setRules(false)}><BountyRules /></Modal>}
     </div>
   );
@@ -1207,9 +1221,7 @@ function RoomScreen({
   const pendingBounty = configPlaying && (currentBounty.enabled !== !!room.settings.bounty ||
     (room.settings.bounty && currentBounty.amount !== room.settings.bounty_amount));
   const currentSquid = room.squid_current || { enabled: !!room.settings.squid, amount: room.settings.squid_amount, reveal: !!room.settings.squid_reveal };
-  const pendingSquid = configPlaying && (currentSquid.enabled !== !!room.settings.squid ||
-    (room.settings.squid && (currentSquid.amount !== room.settings.squid_amount || currentSquid.reveal !== !!room.settings.squid_reveal)));
-  const squidRound = room.squid_round;
+  const pendingSquid = squidPending(room);
   const showWindow = !!(hand?.result && hand.cards[me.id]?.length &&
     now >= (hand.reveal_start || 0) && now < hand.reveal_until && !room.closed_at);
   const reveal = (cards: number[]) => {
@@ -1397,10 +1409,7 @@ function RoomScreen({
             aria-label={`2–7 奖励${pendingBounty ? '，下一手有变更' : ''}`}>
             <span>2–7 · {currentBounty.enabled ? n(currentBounty.amount || 0) : '关'}</span>{pendingBounty && <b aria-hidden="true">•</b>}
           </button>}
-          {(currentSquid.enabled || pendingSquid || !!room.squid_history?.length) && <button className="mobile-rule-chip" onClick={() => setModal('squid')}
-            aria-label={`鱿鱼游戏${pendingSquid ? '，下一手有变更' : ''}`}>
-            <span>🦑 {currentSquid.enabled ? squidRound ? `${squidRound.members.reduce((sum, m) => sum + m.count, 0)}/${squidRound.total}` : '等待' : '记录'}</span>{pendingSquid && <b aria-hidden="true">•</b>}
-          </button>}
+          <SquidStatus room={room} open={() => setModal('squid')} />
           {room.settings.twice && <span className="rule-tag">发两次</span>}
           {room.settings.straddle && <span className="rule-tag">UTG</span>}
         </div>
@@ -1413,15 +1422,6 @@ function RoomScreen({
           ? `开启2–7奖励 · 每人 ${n(room.settings.bounty_amount || 0)}` : '关闭2–7奖励'}
           {room.phase === 'straddle' && '（正在询问 Straddle 的一手保持原规则）'}</span>}
       </div>}
-      {(currentSquid.enabled || pendingSquid || !!room.squid_history?.length) && <div className="squid-status">
-        <button type="button" className="squid-tag" onClick={() => setModal('squid')}>
-          🦑 {room.closed_at ? '鱿鱼记录 · 房间已结束' : currentSquid.enabled ? `鱿鱼 · 每个 ${n(currentSquid.amount || 0)}` : '鱿鱼已关闭'}
-          {squidRound && ` · 第 ${squidRound.number} 轮 ${squidRound.members.reduce((sum, m) => sum + m.count, 0)}/${squidRound.total}`}
-          {!room.closed_at && !squidRound && currentSquid.enabled && ' · 等待新一轮'} <Info size={12} />
-        </button>
-        {pendingSquid && <span>下一手{room.settings.squid ? `开启 · 单价 ${n(room.settings.squid_amount || 0)} · ${room.settings.squid_reveal ? '自动亮牌' : '不额外亮牌'}` : '关闭鱿鱼，未完成轮次作废'}</span>}
-      </div>}
-      <SquidNotice hand={hand} connection={connection} now={now} />
       <BountyCelebration hand={hand} connection={connection} now={now} />
       <SquidCelebration hand={hand} connection={connection} now={now} />
       {status === "revoked" && (
@@ -1699,7 +1699,7 @@ function RoomScreen({
                       ))}
                       {h.uncontested_winner && <p className="history-log">无人形成底池，投入已退回；
                         {h.result?.find(p => p.pid === h.uncontested_winner)?.name} 获胜。</p>}
-                      {h.squid && <p className="squid-history-award">🦑 {h.squid.award.name} 获得鱿鱼 · 第 {h.squid.award.round} 轮</p>}
+                      {h.squid && <p className="squid-history-award">🦑 {h.squid.award.name} 获得 {h.squid.award.gained ?? 1} 条鱿鱼 · 第 {h.squid.award.round} 轮</p>}
                       {h.squid?.settlement && <SquidSettlementView event={h.squid.settlement} />}
                       {h.bounty && <div className="bounty-history">
                         <h3>{h.bounty.name} 获得2-7奖励 +{n(h.bounty.total)}</h3>
@@ -2239,7 +2239,8 @@ function RoomScreen({
               e.preventDefault();
               send({ type: "settings", settings: configPlaying
                 ? { short_deck: !!config.short_deck, bounty: config.bounty, bounty_amount: config.bounty_amount, squid: !!config.squid,
-                    squid_amount: config.squid_amount ?? null, squid_reveal: !!config.squid_reveal } : config }, true);
+                    squid_amount: config.squid_amount ?? null, squid_reveal: !!config.squid_reveal,
+                    squid_mode: config.squid_mode || 'classic', squid_multiplier: !!config.squid_multiplier } : config }, true);
             }}
           >
             <ConfigFields value={config} change={setConfig} playing={configPlaying} />
@@ -2247,14 +2248,15 @@ function RoomScreen({
               className="primary wide"
               disabled={busy}
             >
-              {configPlaying ? "保存规则配置 · 下一手生效" : "保存配置"}
+              {configPlaying ? "保存规则配置" : "保存配置"}
             </button>
           </form>
         </Modal>
       )}
       {modal === 'squid' && <Modal title="鱿鱼游戏" close={() => setModal(null)}>
         <p>{currentSquid.enabled ? `当前每个 ${n(currentSquid.amount || 0)} 筹码 · ${currentSquid.reveal ? '自动亮牌' : '不额外亮牌'}` : '当前鱿鱼已关闭'}</p>
-        {pendingSquid && <p role="status">下一手{room.settings.squid ? `开启 · 单价 ${n(room.settings.squid_amount || 0)} · ${room.settings.squid_reveal ? '自动亮牌' : '不额外亮牌'}` : '关闭鱿鱼，未完成轮次作废'}</p>}
+        {pendingSquid.hand && <p role="status">{pendingSquid.hand}</p>}
+        {pendingSquid.round && <p role="status">{pendingSquid.round}</p>}
         <SquidDetails room={room} /></Modal>}
       {modal === 'bounty-rules' && <Modal title="2–7 杂色奖励规则" close={() => setModal(null)}>
         <p>{currentBounty.enabled ? `当前奖励 · 每人 ${n(currentBounty.amount || 0)} 筹码` : '本手2–7奖励关闭'}</p>

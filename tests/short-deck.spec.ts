@@ -104,7 +104,7 @@ test('live owner switches both ways while players and observer keep current hand
     await expect(owner.getByLabel('大盲', { exact: true })).toBeDisabled();
     await owner.getByRole('switch', { name: '短牌模式', exact: true }).check();
     await expect(owner.getByRole('switch', { name: '2–7 杂色奖励', exact: true })).toBeDisabled();
-    await owner.getByRole('button', { name: '保存规则配置 · 下一手生效' }).click();
+    await owner.getByRole('button', { name: '保存规则配置' }).click();
     for (const page of [owner, guest, observer]) {
       await expect(page.locator('.short-deck-status')).toContainText('本手：普通');
       await expect(page.locator('.short-deck-status')).toContainText('下一手：短牌');
@@ -140,7 +140,7 @@ test('live owner switches both ways while players and observer keep current hand
     await owner.getByRole('button', { name: '房间设置', exact: true }).first().click();
     await owner.getByRole('switch', { name: '短牌模式', exact: true }).uncheck();
     await expect(owner.getByRole('switch', { name: '2–7 杂色奖励', exact: true })).not.toBeChecked();
-    await owner.getByRole('button', { name: '保存规则配置 · 下一手生效' }).click();
+    await owner.getByRole('button', { name: '保存规则配置' }).click();
     await expect(observer.locator('.short-deck-status')).toContainText('下一手：普通');
     await foldCurrent();
     await expect.poll(async () => (await state(owner, rid)).hand.number, { timeout: 15000 }).toBe(3);

@@ -7,10 +7,12 @@ from .limits import SEAT_COUNT
 from . import achievements, bounty, engine, equity, hands, preactions, squid, settlement
 
 MAX_INTEGER = 9_007_199_254_740_991
+MAX_INFINITE_SQUID_AMOUNT = MAX_INTEGER // (500 * (SEAT_COUNT + 3) * 8)
 RUNOUT_STREET_PAUSE = 1.5
 LAST_ACTION_PAUSE = 1.5
 DEFAULTS = dict(sb=1, bb=2, timebank=10, refill=20, straddle=False, twice=False, short_deck=False,
-                bounty=False, bounty_amount=None, squid=False, squid_amount=None, squid_reveal=False)
+                bounty=False, bounty_amount=None, squid=False, squid_amount=None, squid_reveal=False,
+                squid_mode='classic', squid_multiplier=False)
 
 
 class GameError(ValueError):
@@ -51,10 +53,13 @@ def settings(value):
     if result['bounty_amount'] is not None:
         integer(result['bounty_amount'], 1)
     require(type(result['squid']) is bool and type(result['squid_reveal']) is bool, '鱿鱼开关格式不正确')
+    require(result['squid_mode'] in ('classic', 'infinite'), '鱿鱼模式不正确')
+    require(type(result['squid_multiplier']) is bool, '鱿鱼倍率开关格式不正确')
     if result['squid_amount'] is None and result['squid']:
         result['squid_amount'] = result['bb']
     if result['squid_amount'] is not None:
-        integer(result['squid_amount'], 1, MAX_INTEGER // 500)
+        integer(result['squid_amount'], 1,
+                MAX_INFINITE_SQUID_AMOUNT if result['squid_mode'] == 'infinite' else MAX_INTEGER // 500)
     return result
 
 
@@ -245,7 +250,7 @@ def begin_next(room, now):
         return
     pos = positions(room, players)
     room['straddle_offer'] = {**pos, 'pid': None, 'bounty_rule': bounty.rule(room['settings']),
-                             'squid_rule': squid.rule(room['settings']),
+                             'squid_rule': squid.effective_rule(room),
                              'short_deck': room['settings'].get('short_deck', False)}
     utg_seat = next_seat([p['seat'] for p in players], pos['bb'])
     utg = next(p for p in players if p['seat'] == utg_seat)
@@ -658,9 +663,13 @@ def command(room, pid, data, now):
         require(isinstance(patch, dict), '房间配置格式不正确')
         playing = bool(room['hand'] and room['hand']['result'] is None) or room['phase'] == 'straddle'
         if playing:
-            require(set(patch) <= {'bounty', 'bounty_amount', 'squid', 'squid_amount', 'squid_reveal', 'short_deck'},
+            require(set(patch) <= {'bounty', 'bounty_amount', 'squid', 'squid_amount', 'squid_reveal',
+                                   'squid_mode', 'squid_multiplier', 'short_deck'},
                     '本手进行中只能调整短牌、2-7奖励和鱿鱼规则，其他配置请在两手之间修改')
         updated = settings({**room['settings'], **patch})
+        locked_squid = (room.get('straddle_offer') or {}).get('squid_rule', {})
+        if ((room.get('squid_round') or {}).get('mode') == 'infinite' or locked_squid.get('mode') == 'infinite'):
+            integer(updated['squid_amount'], 1, MAX_INFINITE_SQUID_AMOUNT)
         old_short_deck = room['settings'].get('short_deck', False)
         old_squid = squid.rule(room['settings'])
         old_rule = bounty.rule(room['settings'])
@@ -676,7 +685,9 @@ def command(room, pid, data, now):
             log(room, f'2-7奖励 {state_text} · 下一手生效', now, 'room')
         if old_squid != squid.rule(updated):
             state_text = f"开启 · 单价 {updated['squid_amount']} · {'自动亮牌' if updated['squid_reveal'] else '不额外亮牌'}" if updated['squid'] else '关闭'
-            log(room, f"鱿鱼游戏 {state_text} · {'下一手生效' if playing else '已生效'}", now, 'squid')
+            mode_text = '无限' if updated['squid_mode'] == 'infinite' else '普通'
+            log(room, f"鱿鱼游戏 {state_text} · 开关/单价/亮牌{'下一手生效' if playing else '已生效'}"
+                f" · 新轮使用{mode_text}鱿鱼 · 倍率{'开启' if updated['squid_multiplier'] else '关闭'}", now, 'squid')
         apply_squid_config(room, now)
     elif kind == 'transfer':
         target = room['players'].get(data.get('pid'))
@@ -881,6 +892,7 @@ def public_hand(hand, viewer, include_hint=False):
         bounty_rule=copy.deepcopy(hand.get('bounty_rule', bounty.rule({}))),
         bounty=copy.deepcopy(hand.get('bounty')) if hand['result'] is not None else None,
         squid_rule=copy.deepcopy(hand.get('squid_rule', squid.rule({}))),
+        squid_contested=hand.get('squid_contested'),
         squid=copy.deepcopy(hand.get('squid')) if hand['result'] is not None else None,
         public_hand_labels=hands.public_labels(hand),
         **({'own_hand_labels': hands.own_labels(hand, viewer)} if include_hint else {}),
@@ -917,9 +929,10 @@ def view(room, viewer, now):
                             else hand.get('short_deck', False) if hand else room['settings'].get('short_deck', False)),
         squid_round=copy.deepcopy(room.get('squid_round')),
         squid_history=copy.deepcopy(room.get('squid_history', [])[-100:]),
+        squid_next_contested=squid.contested(room['squid_round']) if room.get('squid_round') else 0,
         squid_current=copy.deepcopy((room.get('straddle_offer') or {}).get('squid_rule', squid.rule({})))
             if room.get('straddle_offer') else
-            copy.deepcopy(hand.get('squid_rule', squid.rule({}))) if state else squid.rule(room['settings']),
+            copy.deepcopy(hand.get('squid_rule', squid.rule({}))) if state else squid.effective_rule(room),
         bounty_current=copy.deepcopy((room.get('straddle_offer') or {}).get('bounty_rule', bounty.rule({})))
             if room['phase'] == 'straddle' else
             copy.deepcopy(hand.get('bounty_rule', bounty.rule({}))) if state else bounty.rule(room['settings']),
